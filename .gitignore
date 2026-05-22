@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+*.log
+logs/
+data/nightguard.json
+data/settings.cache.json
+.DS_Store
+.vscode/
+.idea/
