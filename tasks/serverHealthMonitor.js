@@ -30,6 +30,8 @@ export default {
       const allServersStatus = await PanelAPI.getAllServersStatus();
       const statusList = allServersStatus.servers || [];
 
+      const performance = await PanelAPI.getSystemPerformance();
+      
       for (const serverStatus of statusList) {
         const serverId = serverStatus.id;
         const previousStatus = this.serverStatuses[serverId];
@@ -66,7 +68,6 @@ export default {
         this.serverStatuses[serverId] = serverStatus.status;
 
         // Check for high CPU/RAM
-        const performance = await PanelAPI.getSystemPerformance();
         if (performance.cpu > 90) {
           logger.warn('High CPU usage detected:', {
             server: serverStatus.name,

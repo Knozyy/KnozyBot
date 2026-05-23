@@ -130,22 +130,22 @@ async function executeSyncMC(message, args) {
 
 async function executeRolKontrol(message, args) {
   const whitelist = await PanelAPI.getWhitelist();
-  const users = whitelist.users || [];
+  const entries = whitelist.entries || [];
 
-  if (users.length === 0) {
+  if (entries.length === 0) {
     return await message.reply('❌ Whitelist boş');
   }
 
   const guild = message.guild;
   const missingRoleUsers = [];
 
-  for (const user of users) {
+  for (const user of entries) {
     try {
       const member = await guild.members.fetch(user.userId);
       const hasRole = member.roles.cache.some((r) => r.name === 'whitelist');
 
       if (!hasRole) {
-        missingRoleUsers.push(`• **${user.username}** (\`${user.nickname}\`)`);
+        missingRoleUsers.push(`• **${user.username || user.discordName}** (\`${user.mcNick}\`)`);
       }
     } catch {
       // User not in guild
@@ -178,14 +178,14 @@ async function executeRolKontrol(message, args) {
 
 async function executeListele(message, args, bot) {
   const whitelist = await PanelAPI.getWhitelist();
-  const users = whitelist.users || [];
+  const entries = whitelist.entries || [];
 
-  if (users.length === 0) {
+  if (entries.length === 0) {
     const embed = embeds.errorEmbed('Whitelist Boş', 'Kullanıcı yok');
     return await message.reply({ embeds: [embed] });
   }
 
-  const paginator = new WhitelistPaginator(users, 10);
+  const paginator = new WhitelistPaginator(entries, 10);
   const currentPage = 0;
 
   const embed = paginator.createEmbed(currentPage);
@@ -224,6 +224,6 @@ async function executeListele(message, args, bot) {
 
   logger.info('Admin whitelist liste:', {
     user: message.author.tag,
-    count: users.length,
+    count: entries.length,
   });
 }

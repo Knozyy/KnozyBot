@@ -58,7 +58,7 @@ export const embeds = {
   // Whitelist embed
   whitelistEmbed: (users, page, totalPages) => {
     const userList = users
-      .map((u) => `• **${u.username}** → \`${u.nickname}\``)
+      .map((u) => `• **${u.username || u.discordName}** → \`${u.mcNick}\``)
       .join('\n');
 
     return new EmbedBuilder()
@@ -72,7 +72,7 @@ export const embeds = {
   // Dashboard embed
   dashboardEmbed: (servers) => {
     const serverList = servers
-      .map((s) => `• **${s.name}**: ${s.status === 'online' ? '🟢' : '🔴'} (${s.players}/${s.maxPlayers})`)
+      .map((s) => `• **${s.name}**: ${s.status === 'online' ? '🟢' : '🔴'} (${s.onlinePlayers}/${s.maxPlayers})`)
       .join('\n');
 
     return new EmbedBuilder()

@@ -15,7 +15,7 @@ export default {
       }
 
       const timedRoles = await PanelAPI.getTimedRoles();
-      const expiring = timedRoles.expiring || [];
+      const expiring = timedRoles.roles || [];
 
       if (expiring.length === 0) {
         return;
@@ -24,30 +24,30 @@ export default {
       const now = new Date();
 
       for (const roleData of expiring) {
-        const expiresAt = new Date(roleData.expiresAt);
+        const expiresAt = new Date(roleData.expiry_timestamp * 1000);
 
         if (now >= expiresAt) {
           try {
             // Remove role from user
-            const member = await guild.members.fetch(roleData.userId);
-            await member.roles.remove(roleData.roleId);
+            const member = await guild.members.fetch(roleData.user_id);
+            await member.roles.remove(roleData.role_id);
 
             // Remove from database
             await PanelAPI.removeTimedRole(expiring.indexOf(roleData));
 
             // Send notification
             try {
-              const user = await bot.users.fetch(roleData.userId);
+              const user = await bot.users.fetch(roleData.user_id);
               await user.send(
-                `🕐 **${guild.name}** sunucusunda <@&${roleData.roleId}> rolü süresi doldu ve kaldırıldı.`
+                `🕐 **${guild.name}** sunucusunda <@&${roleData.role_id}> rolü süresi doldu ve kaldırıldı.`
               );
             } catch {
               // User DM disabled
             }
 
             logger.info('Timed role expired:', {
-              user: roleData.userId,
-              role: roleData.roleId,
+              user: roleData.user_id,
+              role: roleData.role_id,
             });
           } catch (error) {
             logger.warn('Error removing timed role:', {

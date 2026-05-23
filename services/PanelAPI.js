@@ -166,10 +166,10 @@ class PanelAPI {
   }
 
   async getBotLogs(lines = 100) {
-    const response = await this.client.get(`/api/discord/bot-logs`, {
+    const response = await this.client.get(`/api/discord/logs`, {
       params: { lines },
     });
-    return response.data;
+    return response.data.log;
   }
 
   // Minecraft Commands

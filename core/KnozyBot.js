@@ -114,13 +114,15 @@ export class KnozyBot extends Client {
   }
 
   startTask(task) {
-    setInterval(async () => {
+    const intervalId = setInterval(async () => {
       try {
         await task.execute(this);
       } catch (error) {
         logger.error(`Task ${task.name} error:`, { error: error.message });
       }
     }, task.interval);
+    this.taskIntervals = this.taskIntervals || [];
+    this.taskIntervals.push(intervalId);
   }
 
   async registerCommands() {
@@ -158,6 +160,11 @@ export class KnozyBot extends Client {
 
   async shutdown() {
     logger.info('Shutting down bot...');
+    if (this.taskIntervals) {
+      for (const intervalId of this.taskIntervals) {
+        clearInterval(intervalId);
+      }
+    }
     this.destroy();
     process.exit(0);
   }

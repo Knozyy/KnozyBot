@@ -117,7 +117,7 @@ async function executeBilgi(interaction) {
       PanelAPI.getTimedRoles(),
     ]);
 
-    const whitelistEntry = whitelist.users?.find((u) => u.userId === user.id);
+    const whitelistEntry = whitelist.entries?.find((u) => u.userId === user.id);
 
     if (!whitelistEntry) {
       const errorEmbed = embeds.errorEmbed(
@@ -127,11 +127,11 @@ async function executeBilgi(interaction) {
       return await interaction.editReply({ embeds: [errorEmbed] });
     }
 
-    const userRoles = timedRoles.roles?.filter((r) => r.userId === user.id) || [];
+    const userRoles = timedRoles.roles?.filter((r) => r.user_id === user.id) || [];
 
     const embed = embeds.infoEmbed('Whitelist Bilgisi', [
       { name: '👤 Kullanıcı', value: `${user.username}`, inline: true },
-      { name: '🎮 Minecraft Nick', value: `${whitelistEntry.nickname}`, inline: true },
+      { name: '🎮 Minecraft Nick', value: `${whitelistEntry.mcNick}`, inline: true },
       {
         name: '📅 Kayıt Tarihi',
         value: formatDate(whitelistEntry.createdAt),
@@ -142,7 +142,7 @@ async function executeBilgi(interaction) {
         value:
           userRoles.length > 0
             ? userRoles
-                .map((r) => `• <@&${r.roleId}> (Bitiş: ${formatDate(r.expiresAt)})`)
+                .map((r) => `• <@&${r.role_id}> (Bitiş: ${formatDate(r.expiry_timestamp * 1000)})`)
                 .join('\n')
             : 'Aktif süreli rol yok',
         inline: false,
@@ -179,9 +179,9 @@ async function executeListele(interaction, bot) {
     }
 
     const whitelistData = await PanelAPI.getWhitelist();
-    const users = whitelistData.users || [];
+    const entries = whitelistData.entries || [];
 
-    if (users.length === 0) {
+    if (entries.length === 0) {
       const errorEmbed = embeds.errorEmbed(
         'Whitelist Boş',
         'Henüz hiç kullanıcı whitelist\'te yok'
@@ -189,7 +189,7 @@ async function executeListele(interaction, bot) {
       return await interaction.editReply({ embeds: [errorEmbed] });
     }
 
-    const paginator = new WhitelistPaginator(users, 10);
+    const paginator = new WhitelistPaginator(entries, 10);
     const currentPage = 0;
 
     const embed = paginator.createEmbed(currentPage);
@@ -247,7 +247,7 @@ async function executeListele(interaction, bot) {
 
     logger.info('Whitelist listesi gösterildi:', {
       user: interaction.user.tag,
-      count: users.length,
+      count: entries.length,
     });
   } catch (error) {
     logger.error('Whitelist listele error:', {

@@ -114,9 +114,19 @@ export default {
         `⚠️ Gece koruma etkin. ${penalty.duration / 1000 / 60} dakika susturulunuz.`
       );
 
-      await message.author.send(
-        `🌙 Gece saatleri (${startHour}:00 - ${endHour}:00) admin etiketlenmesi yapılamaz.\nCeza Seviyesi: ${level}/4`
-      );
+      try {
+        await message.member.timeout(penalty.duration, 'Gece koruması ihlali');
+      } catch (timeoutErr) {
+        logger.warn('Could not apply timeout', { error: timeoutErr.message });
+      }
+
+      try {
+        await message.author.send(
+          `🌙 Gece saatleri (${startHour}:00 - ${endHour}:00) admin etiketlenmesi yapılamaz.\nCeza Seviyesi: ${level}/4`
+        );
+      } catch (dmErr) {
+        // user dm disabled
+      }
 
       logger.info(`Night guard violation logged`, {
         user: message.author.tag,

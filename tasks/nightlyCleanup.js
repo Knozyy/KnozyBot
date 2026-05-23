@@ -1,5 +1,7 @@
 import { logger } from '../core/logger.js';
 import { DateTime } from 'luxon';
+import PanelAPI from '../services/PanelAPI.js';
+import { EmbedBuilder } from 'discord.js';
 
 export default {
   name: 'nightlyCleanup',
@@ -37,11 +39,61 @@ export default {
         return;
       }
 
-      // Check whitelist roles - remove users without required role
-      // This would be implemented with PanelAPI.getWhitelist() and role checks
-      // For now, just log that it ran
+      const whitelistData = await PanelAPI.getWhitelist();
+      const entries = whitelistData.entries || [];
+      const settings = await PanelAPI.getBotSettings();
+      const whitelistRoleIds = settings.whitelistRoleIds || [];
+      const allServersStatus = await PanelAPI.getAllServersStatus();
+      const activeServers = allServersStatus.servers.filter(s => s.status === 'running' || s.status === 'online');
 
-      logger.info('Nightly cleanup completed');
+      let removedCount = 0;
+      let removedUsers = [];
+
+      for (const entry of entries) {
+        let hasRole = false;
+        try {
+          const member = await guild.members.fetch(entry.userId);
+          hasRole = member.roles.cache.some((role) => whitelistRoleIds.includes(role.id));
+        } catch (err) {
+          hasRole = false; // Left server
+        }
+
+        if (!hasRole) {
+          try {
+            await PanelAPI.removeWhitelist(entry.userId);
+            for (const server of activeServers) {
+              try {
+                await PanelAPI.executeMCCommand(server.id, `whitelist remove ${entry.mcNick}`);
+              } catch (e) {
+                logger.warn(`Failed to execute whitelist remove for ${entry.mcNick} on server ${server.id}`);
+              }
+            }
+            removedCount++;
+            removedUsers.push(entry.mcNick);
+          } catch (e) {
+            logger.warn(`Failed to remove ${entry.mcNick} from whitelist API`);
+          }
+        }
+      }
+
+      logger.info(`Nightly cleanup completed. Removed ${removedCount} users.`);
+
+      if (removedCount > 0 && settings.dashboardChannelId) {
+        try {
+          const channel = await guild.channels.fetch(settings.dashboardChannelId);
+          if (channel) {
+            const embed = new EmbedBuilder()
+              .setTitle('🌙 Gece Temizliği Raporu')
+              .setDescription(`${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
+              .setColor('#ff3333')
+              .addFields({ name: 'Çıkarılanlar', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') })
+              .setTimestamp();
+            await channel.send({ embeds: [embed] });
+          }
+        } catch (e) {
+          logger.warn('Could not send nightly cleanup report embed');
+        }
+      }
     } catch (error) {
       logger.warn('Nightly cleanup error:', { error: error.message });
     }

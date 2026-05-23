@@ -29,7 +29,7 @@ export class WhitelistPaginator {
     const { page, users, totalPages } = this.getPage(pageNum);
 
     const userList = users
-      .map((u) => `• **${u.username}** → \`${u.nickname}\``)
+      .map((u) => `• **${u.username || u.discordName}** → \`${u.mcNick}\``)
       .join('\n');
 
     return new EmbedBuilder()
