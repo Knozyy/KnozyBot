@@ -4,6 +4,8 @@ import cache from '../services/Cache.js';
 
 export async function hasAdminRole(member) {
   try {
+    if (member.permissions?.has('Administrator')) return true;
+
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),

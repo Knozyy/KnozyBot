@@ -135,8 +135,14 @@ export class KnozyBot extends Client {
     const commands = Array.from(this.commands.values()).map((cmd) => cmd.data.toJSON());
 
     try {
+      // Çift komut oluşumunu (duplicate) önlemek için önce global komutları temizle
+      if (this.application) {
+        await this.application.commands.set([]);
+        logger.info('Cleared global slash commands to prevent duplicates');
+      }
+
       await guild.commands.set(commands);
-      logger.info(`Registered ${commands.length} slash commands`);
+      logger.info(`Registered ${commands.length} slash commands to guild`);
     } catch (error) {
       logger.error('Failed to register commands:', { error: error.message });
     }
