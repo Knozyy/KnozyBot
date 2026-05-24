@@ -42,7 +42,7 @@ export default {
       const whitelistData = await PanelAPI.getWhitelist();
       const entries = whitelistData.entries || [];
       const settings = await PanelAPI.getBotSettings();
-      const whitelistRoleIds = settings.whitelistRoleIds || [];
+      const requiredRoleIds = settings.whitelist_required_role_ids || [];
       const allServersStatus = await PanelAPI.getAllServersStatus();
       const activeServers = allServersStatus.servers.filter(s => s.status === 'running' || s.status === 'online');
 
@@ -53,7 +53,7 @@ export default {
         let hasRole = false;
         try {
           const member = await guild.members.fetch(entry.userId);
-          hasRole = member.roles.cache.some((role) => whitelistRoleIds.includes(role.id));
+          hasRole = member.roles.cache.some((role) => requiredRoleIds.includes(role.id));
         } catch (err) {
           hasRole = false; // Left server
         }
