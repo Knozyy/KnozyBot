@@ -64,8 +64,17 @@ export async function hasWhitelistRequiredRole(member) {
     );
 
     const requiredRoleIds = settings.whitelist_required_role_ids || [];
+    const memberRoleIds = member.roles.cache.map(r => r.id);
+    console.log('[DEBUG hasWhitelistRequiredRole]', {
+      requiredRoleIds,
+      requiredType: typeof requiredRoleIds,
+      isArray: Array.isArray(requiredRoleIds),
+      memberRoleIds,
+      allSettings: JSON.stringify(settings),
+    });
     return member.roles.cache.some((role) => requiredRoleIds.includes(role.id));
   } catch (error) {
+    console.error('[DEBUG hasWhitelistRequiredRole ERROR]', error);
     throw new PermissionError('Kayıtlı oyuncu rolü kontrol edilemedi');
   }
 }
