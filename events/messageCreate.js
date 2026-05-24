@@ -73,14 +73,12 @@ export default {
       const adminId = nightGuard.adminId;
       const protectedRoleId = nightGuard.protectedRoleId;
 
-      if (!adminId) return;
+      if (!adminId && !protectedRoleId) return;
 
-      const mentionsAdmin = message.mentions.has(adminId);
-      const hasProtectedRole = protectedRoleId
-        ? message.member.roles.cache.has(protectedRoleId)
-        : false;
+      const mentionsAdmin = adminId ? message.mentions.users.has(adminId) : false;
+      const mentionsProtectedRole = protectedRoleId ? message.mentions.roles.has(protectedRoleId) : false;
 
-      if (!mentionsAdmin && !hasProtectedRole) return;
+      if (!mentionsAdmin && !mentionsProtectedRole) return;
 
       // Log violation
       await ensureDataDir();
@@ -103,7 +101,7 @@ export default {
       const penalties = [
         { level: 1, duration: 1 * 60 * 1000 },
         { level: 2, duration: 5 * 60 * 1000 },
-        { level: 3, duration: 15 * 60 * 1000 },
+        { level: 3, duration: 10 * 60 * 1000 },
         { level: 4, duration: 30 * 60 * 1000 },
       ];
 
@@ -111,7 +109,7 @@ export default {
       const penalty = penalties[level - 1];
 
       await message.reply(
-        `⚠️ Gece koruma etkin. ${penalty.duration / 1000 / 60} dakika susturulunuz.`
+        `⚠️ Gece koruma etkin. Gece saatlerinde yöneticiyi etiketlediğiniz için ${penalty.duration / 1000 / 60} dakika susturuldunuz.`
       );
 
       try {
