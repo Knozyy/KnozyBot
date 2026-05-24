@@ -24,7 +24,7 @@ npm install --production --silent
 # 3. Restart
 echo -e "${YELLOW}[3/3]${NC} Bot yeniden başlatılıyor..."
 if command -v pm2 &> /dev/null; then
-    nohup bash -c "sleep 2 && pm2 restart knozy-bot" > /dev/null 2>&1 &
+    nohup bash -c "sleep 2 && pm2 restart KnozyBot" > /dev/null 2>&1 &
     echo -e "  → Restart 2 saniye içinde arka planda gerçekleşecek."
 else
     echo "PM2 bulunamadı, manuel restart gerekli."
