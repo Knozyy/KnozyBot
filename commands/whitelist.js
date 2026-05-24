@@ -3,7 +3,7 @@ import PanelAPI from '../services/PanelAPI.js';
 import cache from '../services/Cache.js';
 import { embeds } from '../services/embeds.js';
 import { logger } from '../core/logger.js';
-import { hasWhitelistRole, hasWhitelistAddRole } from '../utils/checks.js';
+import { hasWhitelistRole, hasWhitelistAddRole, hasWhitelistRequiredRole } from '../utils/checks.js';
 import { sanitizeNickname, formatDate } from '../utils/formatters.js';
 import { WhitelistPaginator } from '../components/WhitelistPaginator.js';
 
@@ -62,7 +62,7 @@ async function executeKayit(interaction) {
   await interaction.deferReply();
 
   try {
-    const hasPermission = await hasWhitelistRole(interaction.member);
+    const hasPermission = await hasWhitelistRequiredRole(interaction.member);
     if (!hasPermission) {
       const errorEmbed = embeds.errorEmbed(
         'Yetki Yok',

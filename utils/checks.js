@@ -21,6 +21,8 @@ export async function hasAdminRole(member) {
 
 export async function hasWhitelistRole(member) {
   try {
+    if (await hasAdminRole(member)) return true;
+
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),
@@ -30,12 +32,14 @@ export async function hasWhitelistRole(member) {
     const whitelistRoleIds = settings.whitelistRoleIds || [];
     return member.roles.cache.some((role) => whitelistRoleIds.includes(role.id));
   } catch (error) {
-    throw new PermissionError('Whitelist rolü kontrol edilemedi');
+    throw new PermissionError('Whitelist görüntüleme rolü kontrol edilemedi');
   }
 }
 
 export async function hasWhitelistAddRole(member) {
   try {
+    if (await hasAdminRole(member)) return true;
+
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),
@@ -46,6 +50,23 @@ export async function hasWhitelistAddRole(member) {
     return member.roles.cache.some((role) => whitelistAddRoleIds.includes(role.id));
   } catch (error) {
     throw new PermissionError('Whitelist ekleme rolü kontrol edilemedi');
+  }
+}
+
+export async function hasWhitelistRequiredRole(member) {
+  try {
+    if (await hasAdminRole(member)) return true;
+
+    const settings = await cache.getOrFetch(
+      'bot-settings',
+      () => PanelAPI.getBotSettings(),
+      5 * 60 * 1000
+    );
+
+    const requiredRoleIds = settings.whitelist_required_role_ids || [];
+    return member.roles.cache.some((role) => requiredRoleIds.includes(role.id));
+  } catch (error) {
+    throw new PermissionError('Kayıtlı oyuncu rolü kontrol edilemedi');
   }
 }
 

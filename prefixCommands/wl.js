@@ -1,5 +1,5 @@
 import PanelAPI from '../services/PanelAPI.js';
-import { hasAdminRole } from '../utils/checks.js';
+import { hasAdminRole, hasWhitelistAddRole, hasWhitelistRole } from '../utils/checks.js';
 import { logger } from '../core/logger.js';
 import { embeds } from '../services/embeds.js';
 import { WhitelistPaginator } from '../components/WhitelistPaginator.js';
@@ -20,24 +20,24 @@ export default {
 
     try {
       const isAdmin = await hasAdminRole(message.member);
-      if (!isAdmin) {
-        return await message.reply('❌ Admin rolü gerekli');
-      }
+      const isWhitelistAdder = await hasWhitelistAddRole(message.member);
+      const isWhitelistViewer = await hasWhitelistRole(message.member);
 
       switch (subcommand) {
         case 'ekle':
+          if (!isWhitelistAdder) return await message.reply('❌ Whitelist ekleme rolü gerekli');
           await executeEkle(message, args);
           break;
         case 'sil':
-          await executeSil(message, args);
-          break;
         case 'sync-mc':
-          await executeSyncMC(message, args);
-          break;
         case 'rol-kontrol':
-          await executeRolKontrol(message, args);
+          if (!isAdmin) return await message.reply('❌ Admin rolü gerekli');
+          if (subcommand === 'sil') await executeSil(message, args);
+          if (subcommand === 'sync-mc') await executeSyncMC(message, args);
+          if (subcommand === 'rol-kontrol') await executeRolKontrol(message, args);
           break;
         case 'liste':
+          if (!isWhitelistViewer) return await message.reply('❌ Whitelist görüntüleme rolü gerekli');
           await executeListele(message, args, bot);
           break;
         default:
