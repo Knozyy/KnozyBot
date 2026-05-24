@@ -8,32 +8,33 @@ export default {
 
   async execute(bot) {
     try {
-      const guild = bot.guilds.cache.first();
-      if (!guild) {
-        logger.debug('No guild found for timed roles check');
-        return;
-      }
-
       const timedRoles = await PanelAPI.getTimedRoles();
-      const expiring = timedRoles.roles || [];
+      const rolesList = timedRoles.roles || [];
 
-      if (expiring.length === 0) {
+      if (rolesList.length === 0) {
         return;
       }
 
       const now = new Date();
 
-      for (const roleData of expiring) {
+      for (let i = 0; i < rolesList.length; i++) {
+        const roleData = rolesList[i];
         const expiresAt = new Date(roleData.expiry_timestamp * 1000);
+        
+        const guild = bot.guilds.cache.get(roleData.guild_id) || bot.guilds.cache.first();
+        if (!guild) continue;
 
         if (now >= expiresAt) {
           try {
-            // Remove role from user
-            const member = await guild.members.fetch(roleData.user_id);
-            await member.roles.remove(roleData.role_id);
+            // Süresi dolmuş -> Sil
+            const member = await guild.members.fetch(roleData.user_id).catch(() => null);
+            if (member) {
+              await member.roles.remove(roleData.role_id).catch(() => null);
+            }
 
-            // Remove from database
-            await PanelAPI.removeTimedRole(expiring.indexOf(roleData));
+            // Remove from database (using the current index. Note: PanelAPI removes by index, but splicing shifts array. It's safer to remove by index if array didn't change, but PanelAPI expects the index from the GET request).
+            // Actually, we pass the original index i to removeTimedRole.
+            await PanelAPI.removeTimedRole(i);
 
             // Send notification
             try {
@@ -49,10 +50,28 @@ export default {
               user: roleData.user_id,
               role: roleData.role_id,
             });
+            
+            // Veritabanı değiştiği için listeyi yeniden çekip döngüyü kırmak veya devam etmek riskli olabilir.
+            // Bir kerede tek bir rol silsin, sonraki döngüde diğerlerini siler.
+            break;
           } catch (error) {
             logger.warn('Error removing timed role:', {
               error: error.message,
             });
+          }
+        } else {
+          // Süresi devam ediyor -> Rol yoksa ver
+          try {
+            const member = await guild.members.fetch(roleData.user_id).catch(() => null);
+            if (member && !member.roles.cache.has(roleData.role_id)) {
+              await member.roles.add(roleData.role_id);
+              logger.info('Timed role assigned to member (sync):', {
+                user: roleData.user_id,
+                role: roleData.role_id,
+              });
+            }
+          } catch (error) {
+            // Ignore
           }
         }
       }
