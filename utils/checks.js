@@ -9,7 +9,7 @@ export async function hasAdminRole(member) {
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),
-      5 * 60 * 1000 // 5 minutes
+      10 * 1000 // 10 seconds
     );
 
     const adminRoleIds = settings.adminRoleIds || [];
@@ -26,7 +26,7 @@ export async function hasWhitelistRole(member) {
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),
-      5 * 60 * 1000
+      10 * 1000
     );
 
     const whitelistRoleIds = settings.whitelistRoleIds || [];
@@ -43,7 +43,7 @@ export async function hasWhitelistAddRole(member) {
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),
-      5 * 60 * 1000
+      10 * 1000
     );
 
     const whitelistAddRoleIds = settings.whitelistAddRoleIds || [];
@@ -60,7 +60,7 @@ export async function hasWhitelistRequiredRole(member) {
     const settings = await cache.getOrFetch(
       'bot-settings',
       () => PanelAPI.getBotSettings(),
-      5 * 60 * 1000
+      10 * 1000
     );
 
     const requiredRoleIds = settings.whitelist_required_role_ids || [];
