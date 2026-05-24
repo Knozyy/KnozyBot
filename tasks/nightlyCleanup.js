@@ -78,20 +78,23 @@ export default {
 
       logger.info(`Nightly cleanup completed. Removed ${removedCount} users.`);
 
-      if (removedCount > 0 && settings.dashboardChannelId) {
-        try {
-          const channel = await guild.channels.fetch(settings.dashboardChannelId);
-          if (channel) {
-            const embed = new EmbedBuilder()
-              .setTitle('🌙 Gece Temizliği Raporu')
-              .setDescription(`${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
-              .setColor('#ff3333')
-              .addFields({ name: 'Çıkarılanlar', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') })
-              .setTimestamp();
-            await channel.send({ embeds: [embed] });
+      if (removedCount > 0) {
+        const logChannelId = settings.night_guard_log_channel_id || settings.dashboard_channel_id;
+        if (logChannelId) {
+          try {
+            const channel = await guild.channels.fetch(logChannelId);
+            if (channel) {
+              const embed = new EmbedBuilder()
+                .setTitle('🌙 Gece Temizliği Raporu')
+                .setDescription(`${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
+                .setColor('#ff3333')
+                .addFields({ name: 'Çıkarılanlar', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') })
+                .setTimestamp();
+              await channel.send({ embeds: [embed] });
+            }
+          } catch (e) {
+            logger.warn('Could not send nightly cleanup report embed');
           }
-        } catch (e) {
-          logger.warn('Could not send nightly cleanup report embed');
         }
       }
     } catch (error) {

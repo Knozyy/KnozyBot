@@ -10,6 +10,7 @@ export default {
     try {
       const timedRoles = await PanelAPI.getTimedRoles();
       const rolesList = timedRoles.roles || [];
+      const settings = await PanelAPI.getBotSettings();
 
       if (rolesList.length === 0) {
         return;
@@ -36,7 +37,7 @@ export default {
             // Actually, we pass the original index i to removeTimedRole.
             await PanelAPI.removeTimedRole(i);
 
-            // Send notification
+            // Send notification to user
             try {
               const user = await bot.users.fetch(roleData.user_id);
               await user.send(
@@ -44,6 +45,20 @@ export default {
               );
             } catch {
               // User DM disabled
+            }
+
+            // Send notification to log channel
+            if (settings.role_log_channel_id) {
+              try {
+                const logChannel = await guild.channels.fetch(settings.role_log_channel_id);
+                if (logChannel) {
+                  await logChannel.send(
+                    `🕐 <@${roleData.user_id}> kullanıcısının <@&${roleData.role_id}> rolünün süresi doldu ve sistem tarafından geri alındı.`
+                  );
+                }
+              } catch (e) {
+                logger.warn('Could not send role expiration log');
+              }
             }
 
             logger.info('Timed role expired:', {
