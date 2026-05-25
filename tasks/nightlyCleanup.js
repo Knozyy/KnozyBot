@@ -56,7 +56,12 @@ export default {
           const { hasWhitelistRequiredRole } = await import('../utils/checks.js');
           hasRole = await hasWhitelistRequiredRole(member);
         } catch (err) {
-          hasRole = false; // Left server
+          if (err.code === 10007) {
+            hasRole = false; // Left server
+          } else {
+            logger.warn(`Could not check role for ${entry.mcNick}: ${err.message}`);
+            continue; // Skip this user to avoid accidental deletion
+          }
         }
 
         if (!hasRole) {
