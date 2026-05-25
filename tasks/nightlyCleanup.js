@@ -41,7 +41,9 @@ export default {
       // Perform nightly cleanup
       logger.info(`Running nightly cleanup... (Test Mode: ${isTest})`);
 
-      const guild = bot.guilds.cache.first();
+      const guildId = bot.guildId || (await import('../config.js')).config.discord.guildId;
+      const guild = bot.guilds.cache.get(guildId) || bot.guilds.cache.first();
+      
       if (!guild) {
         logger.debug('No guild found for nightly cleanup');
         return;
@@ -128,7 +130,9 @@ export default {
         }
       }
     } catch (error) {
-      logger.warn('Nightly cleanup error:', { error: error.message });
+      logger.error('Error during nightly cleanup:', { error: error.message });
+    } finally {
+      this.isRunning = false;
     }
   },
 };
