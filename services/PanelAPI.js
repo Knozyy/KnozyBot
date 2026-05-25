@@ -56,6 +56,16 @@ class PanelAPI {
     };
   }
 
+  async getPlayerHistory() {
+    try {
+      const response = await this.client.get('/api/discord/player-history');
+      return response.data.history || [];
+    } catch (e) {
+      logger.warn('Failed to fetch player history', { error: e.message });
+      return [];
+    }
+  }
+
   async getAllServersStatus() {
     // KnozySunucu'da /api/servers/status-all yok — her sunucuyu tek tek al
     try {

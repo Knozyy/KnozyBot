@@ -70,16 +70,22 @@ export const embeds = {
   },
 
   // Dashboard embed
-  dashboardEmbed: (servers) => {
+  dashboardEmbed: (servers, chartUrl = null) => {
     const serverList = servers
       .map((s) => `• **${s.name}**: ${s.status === 'online' ? '🟢' : '🔴'} (${s.onlinePlayers}/${s.maxPlayers})`)
       .join('\n');
 
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
       .setColor(COLORS.SUCCESS)
       .setTitle(`${EMOJIS.DASHBOARD} Dashboard`)
       .setDescription(serverList || 'Sunucu yok')
       .setTimestamp();
+      
+    if (chartUrl) {
+      embed.setImage(chartUrl);
+    }
+    
+    return embed;
   },
 
   // Info embed
