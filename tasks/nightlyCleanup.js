@@ -79,25 +79,19 @@ export default {
 
         if (!hasRole) {
           try {
-            if (isTest) {
-              logger.info(`[TEST MODE] Would remove ${entry.mcNick} (${entry.userId}).`);
-              removedCount++;
-              removedUsers.push(entry.mcNick);
-            } else {
-              logger.info(`[CLEANUP] Removing ${entry.mcNick} (${entry.userId}). No required role found.`);
-              await PanelAPI.removeWhitelist(entry.userId);
-              for (const server of activeServers) {
-                try {
-                  await PanelAPI.executeMCCommand(server.id, `whitelist remove ${entry.mcNick}`);
-                } catch (e) {
-                  logger.warn(`Failed to execute whitelist remove for ${entry.mcNick} on server ${server.id}`);
-                }
+            logger.info(`[CLEANUP] Removing ${entry.mcNick} (${entry.userId}). No required role found.`);
+            await PanelAPI.removeWhitelist(entry.userId);
+            for (const server of activeServers) {
+              try {
+                await PanelAPI.executeMCCommand(server.id, `whitelist remove ${entry.mcNick}`);
+              } catch (e) {
+                logger.warn(`Failed to execute whitelist remove for ${entry.mcNick} on server ${server.id}`);
               }
-              removedCount++;
-              removedUsers.push(entry.mcNick);
             }
+            removedCount++;
+            removedUsers.push(entry.mcNick);
           } catch (e) {
-            logger.warn(`Failed to remove ${entry.mcNick} from whitelist API`);
+            logger.warn(`Failed to remove ${entry.mcNick} from whitelist API: ${e.message}`);
           }
         }
       }
@@ -112,21 +106,24 @@ export default {
             if (channel) {
               const embed = new EmbedBuilder()
                 .setTitle(isTest ? '🛠️ [TEST] Gece Temizliği Raporu' : '🌙 Gece Temizliği Raporu')
-                .setDescription(isTest 
-                  ? `**TEST MODU**: Aşağıdaki ${removedCount} oyuncunun whitelist rolü olmadığı tespit edildi.\n*(Test modu olduğu için kimse silinmedi)*` 
-                  : `${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
+                .setDescription(`${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
                 .setColor(isTest ? '#f5a623' : '#ff3333');
                 
               if (removedCount > 0) {
-                 embed.addFields({ name: 'Tespit Edilenler', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') });
+                 embed.addFields({ name: 'Çıkarılanlar', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') });
               }
                 
               embed.setTimestamp();
               await channel.send({ embeds: [embed] });
+              logger.info('Nightly cleanup report embed sent successfully.');
+            } else {
+              logger.warn(`Log channel ${logChannelId} could not be found in the guild.`);
             }
           } catch (e) {
-            logger.warn('Could not send nightly cleanup report embed');
+            logger.error('Could not send nightly cleanup report embed:', { error: e.message, code: e.code });
           }
+        } else {
+          logger.warn('No log channel configured for nightly cleanup.');
         }
       }
     } catch (error) {
