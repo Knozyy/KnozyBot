@@ -64,18 +64,9 @@ async function executeKayit(interaction) {
   try {
     const hasPermission = await hasWhitelistRequiredRole(interaction.member);
     if (!hasPermission) {
-      // Debug: göster ki neler karşılaştırılıyor
-      let debugInfo = '';
-      try {
-        const settings = await PanelAPI.getBotSettings();
-        const requiredIds = settings.whitelist_required_role_ids || [];
-        const userRoleIds = interaction.member.roles.cache.map(r => `${r.name}:${r.id}`);
-        debugInfo = `\n\n**[DEBUG]**\nGerekli Rol ID'leri: \`${JSON.stringify(requiredIds)}\`\nKullanıcı Rolleri: \`${JSON.stringify(userRoleIds)}\`\nTüm Ayarlar Keys: \`${Object.keys(settings).join(', ')}\``;
-      } catch { /* ignore */ }
-
       const errorEmbed = embeds.errorEmbed(
         'Yetki Yok',
-        'Whitelist kaydı yapmak için gerekli rolü yoksunuz' + debugInfo
+        'Whitelist kaydı yapmak için gerekli role sahip değilsiniz.'
       );
       return await interaction.editReply({ embeds: [errorEmbed] });
     }
