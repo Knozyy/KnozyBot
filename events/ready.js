@@ -1,8 +1,9 @@
+import { Events, ActivityType } from 'discord.js';
 import { logger } from '../core/logger.js';
 import PanelAPI from '../services/PanelAPI.js';
 
 export default {
-  name: 'ready',
+  name: Events.ClientReady,
   once: true,
   async execute(bot) {
     logger.info(`✅ Bot logged in as ${bot.user.tag}`);
