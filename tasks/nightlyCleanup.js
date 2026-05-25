@@ -9,29 +9,30 @@ export default {
 
   lastRun: null,
 
-  async execute(bot) {
+  async execute(bot, isTest = false) {
     try {
       // Check if it's midnight UTC+3 (00:00 to 00:59)
       const now = DateTime.now().setZone('Europe/Istanbul');
 
-      // Only run once per day at midnight
-      if (this.lastRun) {
-        const lastDay = this.lastRun.toFormat('yyyy-MM-dd');
-        const currentDay = now.toFormat('yyyy-MM-dd');
+      if (!isTest) {
+        // Only run once per day at midnight
+        if (this.lastRun) {
+          const lastDay = this.lastRun.toFormat('yyyy-MM-dd');
+          const currentDay = now.toFormat('yyyy-MM-dd');
 
-        if (lastDay === currentDay) {
-          return; // Already ran today
+          if (lastDay === currentDay) {
+            return; // Already ran today
+          }
         }
-      }
 
-      if (now.hour !== 0) {
-        return; // Not midnight
+        if (now.hour !== 0) {
+          return; // Not midnight
+        }
+        this.lastRun = now;
       }
-
-      this.lastRun = now;
 
       // Perform nightly cleanup
-      logger.info('Running nightly cleanup...');
+      logger.info(`Running nightly cleanup... (Test Mode: ${isTest})`);
 
       const guild = bot.guilds.cache.first();
       if (!guild) {
@@ -63,6 +64,9 @@ export default {
             continue; // Skip this user to avoid accidental deletion
           }
         }
+
+        // Add a 500ms delay to avoid Discord API rate limits
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         if (!hasRole) {
           try {
