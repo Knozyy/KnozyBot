@@ -53,7 +53,8 @@ export default {
         let hasRole = false;
         try {
           const member = await guild.members.fetch(entry.userId);
-          hasRole = member.roles.cache.some((role) => requiredRoleIds.includes(role.id));
+          const { hasWhitelistRequiredRole } = await import('../utils/checks.js');
+          hasRole = await hasWhitelistRequiredRole(member);
         } catch (err) {
           hasRole = false; // Left server
         }
