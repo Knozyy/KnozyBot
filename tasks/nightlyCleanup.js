@@ -8,8 +8,15 @@ export default {
   interval: 60 * 1000, // Check every minute
 
   lastRun: null,
+  isRunning: false,
 
   async execute(bot, isTest = false) {
+    if (this.isRunning) {
+      logger.warn('nightlyCleanup is already running, skipping...');
+      return;
+    }
+    this.isRunning = true;
+
     try {
       // Check if it's midnight UTC+3 (00:00 to 00:59)
       const now = DateTime.now().setZone('Europe/Istanbul');
@@ -70,16 +77,23 @@ export default {
 
         if (!hasRole) {
           try {
-            await PanelAPI.removeWhitelist(entry.userId);
-            for (const server of activeServers) {
-              try {
-                await PanelAPI.executeMCCommand(server.id, `whitelist remove ${entry.mcNick}`);
-              } catch (e) {
-                logger.warn(`Failed to execute whitelist remove for ${entry.mcNick} on server ${server.id}`);
+            if (isTest) {
+              logger.info(`[TEST MODE] Would remove ${entry.mcNick} (${entry.userId}).`);
+              removedCount++;
+              removedUsers.push(entry.mcNick);
+            } else {
+              logger.info(`[CLEANUP] Removing ${entry.mcNick} (${entry.userId}). No required role found.`);
+              await PanelAPI.removeWhitelist(entry.userId);
+              for (const server of activeServers) {
+                try {
+                  await PanelAPI.executeMCCommand(server.id, `whitelist remove ${entry.mcNick}`);
+                } catch (e) {
+                  logger.warn(`Failed to execute whitelist remove for ${entry.mcNick} on server ${server.id}`);
+                }
               }
+              removedCount++;
+              removedUsers.push(entry.mcNick);
             }
-            removedCount++;
-            removedUsers.push(entry.mcNick);
           } catch (e) {
             logger.warn(`Failed to remove ${entry.mcNick} from whitelist API`);
           }
@@ -88,18 +102,24 @@ export default {
 
       logger.info(`Nightly cleanup completed. Removed ${removedCount} users.`);
 
-      if (removedCount > 0) {
+      if (removedCount > 0 || isTest) {
         const logChannelId = settings.night_guard_log_channel_id || settings.dashboard_channel_id;
         if (logChannelId) {
           try {
             const channel = await guild.channels.fetch(logChannelId);
             if (channel) {
               const embed = new EmbedBuilder()
-                .setTitle('🌙 Gece Temizliği Raporu')
-                .setDescription(`${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
-                .setColor('#ff3333')
-                .addFields({ name: 'Çıkarılanlar', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') })
-                .setTimestamp();
+                .setTitle(isTest ? '🛠️ [TEST] Gece Temizliği Raporu' : '🌙 Gece Temizliği Raporu')
+                .setDescription(isTest 
+                  ? `**TEST MODU**: Aşağıdaki ${removedCount} oyuncunun whitelist rolü olmadığı tespit edildi.\n*(Test modu olduğu için kimse silinmedi)*` 
+                  : `${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
+                .setColor(isTest ? '#f5a623' : '#ff3333');
+                
+              if (removedCount > 0) {
+                 embed.addFields({ name: 'Tespit Edilenler', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') });
+              }
+                
+              embed.setTimestamp();
               await channel.send({ embeds: [embed] });
             }
           } catch (e) {
