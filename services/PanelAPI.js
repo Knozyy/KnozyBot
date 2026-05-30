@@ -19,7 +19,7 @@ class PanelAPI {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
-        const message = error.response?.data?.message || error.message;
+        const message = error.response?.data?.error || error.response?.data?.message || error.message;
         const statusCode = error.response?.status;
         logger.error(`Panel API Error: ${message}`, { statusCode });
         throw new PanelAPIError(message, statusCode);
