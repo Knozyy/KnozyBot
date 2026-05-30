@@ -54,11 +54,27 @@ export default {
       let chartUrl = null;
       if (history && history.length > 0) {
         try {
-          // Group by 5-minute intervals for higher resolution, filtering to the last 24 hours
-          const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-          const recentHistory = history
-            .filter(h => h.timestamp >= oneDayAgo)
+          // Parse all timestamps safely and filter out invalid records
+          const parsedHistory = history
+            .map(h => {
+              let ts = Number(h.timestamp);
+              if (isNaN(ts)) ts = new Date(h.timestamp).getTime();
+              return {
+                timestamp: ts,
+                players: typeof h.players === 'number' ? h.players : parseInt(h.players) || 0
+              };
+            })
+            .filter(h => !isNaN(h.timestamp))
             .sort((a, b) => a.timestamp - b.timestamp);
+
+          if (parsedHistory.length === 0) {
+            throw new Error('No valid history records found');
+          }
+
+          // Use the latest record's timestamp as the reference point to prevent clock drift issues
+          const latestTs = parsedHistory[parsedHistory.length - 1].timestamp;
+          const oneDayAgo = latestTs - 24 * 60 * 60 * 1000;
+          const recentHistory = parsedHistory.filter(h => h.timestamp >= oneDayAgo);
 
           const buckets = {};
           for (const h of recentHistory) {
