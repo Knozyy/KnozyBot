@@ -53,28 +53,36 @@ export default {
       let chartUrl = null;
       if (history && history.length > 0) {
         try {
-          // Group by hour for clean x-axis labels
-          const grouped = [];
-          let currentHour = null;
-          let maxPlayers = 0;
-          
-          for (const h of history) {
-            const d = new Date(h.timestamp);
-            const trTime = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-            const hour = `${trTime.getHours().toString().padStart(2, '0')}:00`;
-            
-            if (hour !== currentHour) {
-              if (currentHour !== null) grouped.push({ label: currentHour, value: maxPlayers });
-              currentHour = hour;
-              maxPlayers = h.players;
+          // Group by 5-minute intervals for higher resolution, filtering to the last 24 hours
+          const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+          const recentHistory = history
+            .filter(h => h.timestamp >= oneDayAgo)
+            .sort((a, b) => a.timestamp - b.timestamp);
+
+          const buckets = {};
+          for (const h of recentHistory) {
+            // Group into 5-minute buckets using timestamp (prevents overlapping across days)
+            const bucketStart = Math.floor(h.timestamp / (5 * 60 * 1000)) * (5 * 60 * 1000);
+            if (buckets[bucketStart] === undefined) {
+              buckets[bucketStart] = h.players;
             } else {
-              if (h.players > maxPlayers) maxPlayers = h.players;
+              buckets[bucketStart] = Math.max(buckets[bucketStart], h.players);
             }
           }
-          if (currentHour !== null) grouped.push({ label: currentHour, value: maxPlayers });
-          
-          const labels = grouped.map(g => g.label);
-          const dataPoints = grouped.map(g => g.value);
+
+          const sortedBuckets = Object.keys(buckets)
+            .map(Number)
+            .sort((a, b) => a - b);
+
+          const labels = sortedBuckets.map(ts => {
+            const d = new Date(ts);
+            const trTime = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const hour = trTime.getHours().toString().padStart(2, '0');
+            const minute = trTime.getMinutes().toString().padStart(2, '0');
+            return `${hour}:${minute}`;
+          });
+
+          const dataPoints = sortedBuckets.map(ts => buckets[ts]);
 
           const chartConfig = {
             type: 'line',
@@ -87,7 +95,7 @@ export default {
                 backgroundColor: 'rgba(245, 166, 35, 0.2)',
                 borderWidth: 2,
                 fill: true,
-                steppedLine: true,
+                steppedLine: false,
                 pointRadius: 0
               }]
             },
