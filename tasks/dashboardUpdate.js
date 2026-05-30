@@ -2,6 +2,7 @@ import PanelAPI from '../services/PanelAPI.js';
 import cache from '../services/Cache.js';
 import { logger } from '../core/logger.js';
 import { embeds } from '../services/embeds.js';
+import axios from 'axios';
 
 export default {
   name: 'dashboardUpdate',
@@ -37,12 +38,13 @@ export default {
         return;
       }
 
-      // Generate Chart URL
+      // Get player history for chart
+      const history = await PanelAPI.getPlayerHistory();
+      
       let chartUrl = null;
-      try {
-        const history = await PanelAPI.getPlayerHistory();
-        if (history && history.length > 0) {
-          // Subsample to prevent URL from getting too long (max 100 points)
+      if (history && history.length > 0) {
+        try {
+          // Subsample to prevent data overflow
           const step = Math.max(1, Math.floor(history.length / 100));
           const sampledHistory = history.filter((_, index) => index % step === 0);
           
@@ -77,10 +79,19 @@ export default {
             }
           };
 
-          chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(chartConfig))}&w=800&h=400&bkg=%232C2F33`;
+          const chartResponse = await axios.post('https://quickchart.io/chart/create', {
+            chart: chartConfig,
+            width: 800,
+            height: 400,
+            backgroundColor: '#2C2F33'
+          });
+          
+          if (chartResponse.data && chartResponse.data.url) {
+            chartUrl = chartResponse.data.url;
+          }
+        } catch (e) {
+          logger.warn('Failed to generate dashboard chart', { error: e.message });
         }
-      } catch (e) {
-        logger.warn('Failed to generate dashboard chart', { error: e.message });
       }
 
       const embed = embeds.dashboardEmbed(servers, chartUrl);
