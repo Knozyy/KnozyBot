@@ -3,6 +3,7 @@ import cache from '../services/Cache.js';
 import { logger } from '../core/logger.js';
 import { embeds } from '../services/embeds.js';
 import axios from 'axios';
+import { DateTime } from 'luxon';
 
 export default {
   name: 'dashboardUpdate',
@@ -75,11 +76,7 @@ export default {
             .sort((a, b) => a - b);
 
           const labels = sortedBuckets.map(ts => {
-            const d = new Date(ts);
-            const trTime = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-            const hour = trTime.getHours().toString().padStart(2, '0');
-            const minute = trTime.getMinutes().toString().padStart(2, '0');
-            return `${hour}:${minute}`;
+            return DateTime.fromMillis(ts).setZone('Europe/Istanbul').toFormat('HH:mm');
           });
 
           const dataPoints = sortedBuckets.map(ts => buckets[ts]);
