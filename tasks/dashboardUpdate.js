@@ -17,9 +17,18 @@ export default {
       );
 
       const targetChannelId = settings.dashboardChannelId || settings.dashboard_channel_id;
+      const updateIntervalMins = parseInt(settings.dashboard_update_interval) || 1;
 
       if (!targetChannelId) {
         logger.debug('Dashboard channel not configured');
+        return;
+      }
+
+      const now = Date.now();
+      if (!bot.lastDashboardUpdate) bot.lastDashboardUpdate = 0;
+      
+      // interval'in süresi dolmadıysa atla
+      if (now - bot.lastDashboardUpdate < (updateIntervalMins * 60 * 1000) - 5000) {
         return;
       }
 
@@ -44,19 +53,28 @@ export default {
       let chartUrl = null;
       if (history && history.length > 0) {
         try {
-          // Subsample to prevent data overflow
-          const step = Math.max(1, Math.floor(history.length / 100));
-          const sampledHistory = history.filter((_, index) => index % step === 0);
+          // Group by hour for clean x-axis labels
+          const grouped = [];
+          let currentHour = null;
+          let maxPlayers = 0;
           
-          const labels = sampledHistory.map(h => {
+          for (const h of history) {
             const d = new Date(h.timestamp);
-            return d.toLocaleTimeString('tr-TR', { 
-              timeZone: 'Europe/Istanbul', 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            });
-          });
-          const dataPoints = sampledHistory.map(h => h.players);
+            const trTime = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const hour = `${trTime.getHours().toString().padStart(2, '0')}:00`;
+            
+            if (hour !== currentHour) {
+              if (currentHour !== null) grouped.push({ label: currentHour, value: maxPlayers });
+              currentHour = hour;
+              maxPlayers = h.players;
+            } else {
+              if (h.players > maxPlayers) maxPlayers = h.players;
+            }
+          }
+          if (currentHour !== null) grouped.push({ label: currentHour, value: maxPlayers });
+          
+          const labels = grouped.map(g => g.label);
+          const dataPoints = grouped.map(g => g.value);
 
           const chartConfig = {
             type: 'line',
@@ -107,6 +125,7 @@ export default {
             settings.dashboardMessageId
           );
           await message.edit({ embeds: [embed] });
+          bot.lastDashboardUpdate = Date.now();
         } catch {
           // Message not found, create new one
           const newMessage = await channel.send({ embeds: [embed] });
@@ -114,6 +133,7 @@ export default {
             ...settings,
             dashboardMessageId: newMessage.id,
           });
+          bot.lastDashboardUpdate = Date.now();
         }
       } else {
         // Create new dashboard message
@@ -122,6 +142,7 @@ export default {
           ...settings,
           dashboardMessageId: message.id,
         });
+        bot.lastDashboardUpdate = Date.now();
       }
 
       logger.debug('Dashboard updated successfully');

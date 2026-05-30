@@ -72,7 +72,7 @@ export const embeds = {
   // Dashboard embed
   dashboardEmbed: (servers, chartUrl = null) => {
     const serverList = servers
-      .map((s) => `• **${s.name}**: ${s.status === 'online' ? '🟢' : '🔴'} (${s.onlinePlayers}/${s.maxPlayers})`)
+      .map((s) => `• **${s.name}**: ${s.status === 'running' ? '🟢' : '🔴'} (${s.onlinePlayers}/${s.maxPlayers})`)
       .join('\n');
 
     const embed = new EmbedBuilder()
