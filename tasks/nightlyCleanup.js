@@ -1,13 +1,12 @@
 import { logger } from '../core/logger.js';
 import { DateTime } from 'luxon';
 import PanelAPI from '../services/PanelAPI.js';
-import { EmbedBuilder } from 'discord.js';
+import cleanupService from '../services/cleanupService.js';
 
 export default {
   name: 'nightlyCleanup',
   interval: 60 * 1000, // Check every minute
 
-  lastRun: null,
   isRunning: false,
 
   async execute(bot, isTest = false) {
@@ -18,24 +17,22 @@ export default {
     this.isRunning = true;
 
     try {
-      // Check if it's midnight UTC+3 (00:00 to 00:59)
       const now = DateTime.now().setZone('Europe/Istanbul');
+      const currentDay = now.toFormat('yyyy-MM-dd');
 
       if (!isTest) {
-        // Only run once per day at midnight
-        if (this.lastRun) {
-          const lastDay = this.lastRun.toFormat('yyyy-MM-dd');
-          const currentDay = now.toFormat('yyyy-MM-dd');
-
-          if (lastDay === currentDay) {
-            return; // Already ran today
-          }
+        // Robust 6-hour daily check (runs once per day between 00:00 and 05:59 Turkey Time)
+        if (now.hour < 0 || now.hour > 5) {
+          return; // Skip if it's not night time
         }
 
-        if (now.hour !== 0) {
-          return; // Not midnight
+        const lastRun = cleanupService.getLastRun();
+        if (lastRun === currentDay) {
+          return; // Already successfully ran today
         }
-        this.lastRun = now;
+
+        // Persist the run date immediately to prevent concurrent executions
+        cleanupService.saveLastRun(currentDay);
       }
 
       // Perform nightly cleanup
@@ -52,7 +49,6 @@ export default {
       const whitelistData = await PanelAPI.getWhitelist();
       const entries = whitelistData.entries || [];
       const settings = await PanelAPI.getBotSettings();
-      const requiredRoleIds = settings.whitelist_required_role_ids || [];
       const allServersStatus = await PanelAPI.getAllServersStatus();
       const activeServers = allServersStatus.servers.filter(s => s.status === 'running' || s.status === 'online');
 
@@ -89,7 +85,7 @@ export default {
               }
             }
             removedCount++;
-            removedUsers.push(entry.mcNick);
+            removedUsers.push({ userId: entry.userId, mcNick: entry.mcNick });
           } catch (e) {
             logger.warn(`Failed to remove ${entry.mcNick} from whitelist API: ${e.message}`);
           }
@@ -98,23 +94,20 @@ export default {
 
       logger.info(`Nightly cleanup completed. Removed ${removedCount} users.`);
 
+      // Persist the report in history
+      cleanupService.addReport(removedCount, removedUsers, currentDay);
+
       if (removedCount > 0 || isTest) {
         const logChannelId = settings.night_guard_log_channel_id || settings.whitelist_log_channel_id || settings.dashboard_channel_id;
         if (logChannelId) {
           try {
             const channel = await guild.channels.fetch(logChannelId);
             if (channel) {
-              const embed = new EmbedBuilder()
-                .setTitle(isTest ? '🛠️ [TEST] Gece Temizliği Raporu' : '🌙 Gece Temizliği Raporu')
-                .setDescription(`${removedCount} oyuncu whitelist rolü olmadığı için veya sunucudan ayrıldığı için whitelistten çıkarıldı.`)
-                .setColor(isTest ? '#f5a623' : '#ff3333');
-                
-              if (removedCount > 0) {
-                 embed.addFields({ name: 'Çıkarılanlar', value: removedUsers.slice(0, 20).join(', ') + (removedUsers.length > 20 ? ` ve ${removedUsers.length - 20} daha...` : '') });
-              }
-                
-              embed.setTimestamp();
-              await channel.send({ embeds: [embed] });
+              const history = cleanupService.getHistory();
+              const embed = cleanupService.buildEmbed(history[0], 0, history.length);
+              const buttons = cleanupService.buildButtons(0, history.length);
+              
+              await channel.send({ embeds: [embed], components: [buttons] });
               logger.info('Nightly cleanup report embed sent successfully.');
             } else {
               logger.warn(`Log channel ${logChannelId} could not be found in the guild.`);
