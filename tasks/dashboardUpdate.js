@@ -3,7 +3,6 @@ import cache from '../services/Cache.js';
 import { logger } from '../core/logger.js';
 import { embeds } from '../services/embeds.js';
 import axios from 'axios';
-import { DateTime } from 'luxon';
 
 export default {
   name: 'dashboardUpdate',
@@ -78,8 +77,8 @@ export default {
 
           const buckets = {};
           for (const h of recentHistory) {
-            // Group into 5-minute buckets using timestamp (prevents overlapping across days)
-            const bucketStart = Math.floor(h.timestamp / (5 * 60 * 1000)) * (5 * 60 * 1000);
+            // Group into 15-minute buckets using timestamp (prevents overlapping across days)
+            const bucketStart = Math.floor(h.timestamp / (15 * 60 * 1000)) * (15 * 60 * 1000);
             if (buckets[bucketStart] === undefined) {
               buckets[bucketStart] = h.players;
             } else {
@@ -92,7 +91,12 @@ export default {
             .sort((a, b) => a - b);
 
           const labels = sortedBuckets.map(ts => {
-            return DateTime.fromMillis(ts).setZone('Europe/Istanbul').toFormat('HH:mm');
+            // Safe Turkey local time conversion (UTC+3) using pure JS offset (robust against locale/timezone bugs)
+            const trOffset = 3 * 60 * 60 * 1000;
+            const d = new Date(ts + trOffset);
+            const hour = d.getUTCHours().toString().padStart(2, '0');
+            const minute = d.getUTCMinutes().toString().padStart(2, '0');
+            return `${hour}:${minute}`;
           });
 
           const dataPoints = sortedBuckets.map(ts => buckets[ts]);
@@ -133,7 +137,7 @@ export default {
             chartUrl = chartResponse.data.url;
           }
         } catch (e) {
-          logger.warn('Failed to generate dashboard chart', { error: e.message });
+          logger.error('Failed to generate dashboard chart', { error: e.message, stack: e.stack });
         }
       }
 
