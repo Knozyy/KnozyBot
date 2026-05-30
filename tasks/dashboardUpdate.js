@@ -49,8 +49,12 @@ export default {
           const sampledHistory = history.filter((_, index) => index % step === 0);
           
           const labels = sampledHistory.map(h => {
-             const d = new Date(h.timestamp);
-             return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+            const d = new Date(h.timestamp);
+            return d.toLocaleTimeString('tr-TR', { 
+              timeZone: 'Europe/Istanbul', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            });
           });
           const dataPoints = sampledHistory.map(h => h.players);
 
