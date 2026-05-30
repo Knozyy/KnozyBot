@@ -15,12 +15,14 @@ export default {
         5 * 60 * 1000
       );
 
-      if (!settings.dashboardChannelId) {
+      const targetChannelId = settings.dashboardChannelId || settings.dashboard_channel_id;
+
+      if (!targetChannelId) {
         logger.debug('Dashboard channel not configured');
         return;
       }
 
-      const channel = bot.channels.cache.get(settings.dashboardChannelId);
+      const channel = bot.channels.cache.get(targetChannelId);
       if (!channel) {
         logger.warn('Dashboard channel not found');
         return;

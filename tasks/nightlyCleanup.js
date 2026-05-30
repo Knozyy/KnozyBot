@@ -99,7 +99,7 @@ export default {
       logger.info(`Nightly cleanup completed. Removed ${removedCount} users.`);
 
       if (removedCount > 0 || isTest) {
-        const logChannelId = settings.night_guard_log_channel_id || settings.dashboard_channel_id;
+        const logChannelId = settings.night_guard_log_channel_id || settings.whitelist_log_channel_id || settings.dashboard_channel_id;
         if (logChannelId) {
           try {
             const channel = await guild.channels.fetch(logChannelId);
