@@ -31,8 +31,7 @@ export default {
           return; // Already successfully ran today
         }
 
-        // Persist the run date immediately to prevent concurrent executions
-        cleanupService.saveLastRun(currentDay);
+        // Don't persist yet — only save after successful execution
       }
 
       // Perform nightly cleanup
@@ -97,27 +96,31 @@ export default {
       // Persist the report in history
       cleanupService.addReport(removedCount, removedUsers, currentDay);
 
-      if (removedCount > 0 || isTest) {
-        const logChannelId = settings.night_guard_log_channel_id || settings.whitelist_log_channel_id || settings.dashboard_channel_id;
-        if (logChannelId) {
-          try {
-            const channel = await guild.channels.fetch(logChannelId);
-            if (channel) {
-              const history = cleanupService.getHistory();
-              const embed = cleanupService.buildEmbed(history[0], 0, history.length);
-              const buttons = cleanupService.buildButtons(0, history.length);
-              
-              await channel.send({ embeds: [embed], components: [buttons] });
-              logger.info('Nightly cleanup report embed sent successfully.');
-            } else {
-              logger.warn(`Log channel ${logChannelId} could not be found in the guild.`);
-            }
-          } catch (e) {
-            logger.error('Could not send nightly cleanup report embed:', { error: e.message, code: e.code });
+      // Mark run as successful AFTER cleanup completes without errors
+      if (!isTest) {
+        cleanupService.saveLastRun(currentDay);
+      }
+
+      // Always send the report (even if 0 removed) so admins know it ran
+      const logChannelId = settings.night_guard_log_channel_id || settings.whitelist_log_channel_id || settings.dashboard_channel_id;
+      if (logChannelId) {
+        try {
+          const channel = await guild.channels.fetch(logChannelId);
+          if (channel) {
+            const history = cleanupService.getHistory();
+            const embed = cleanupService.buildEmbed(history[0], 0, history.length);
+            const buttons = cleanupService.buildButtons(0, history.length);
+            
+            await channel.send({ embeds: [embed], components: [buttons] });
+            logger.info('Nightly cleanup report embed sent successfully.');
+          } else {
+            logger.warn(`Log channel ${logChannelId} could not be found in the guild.`);
           }
-        } else {
-          logger.warn('No log channel configured for nightly cleanup.');
+        } catch (e) {
+          logger.error('Could not send nightly cleanup report embed:', { error: e.message, code: e.code });
         }
+      } else {
+        logger.warn('No log channel configured for nightly cleanup.');
       }
     } catch (error) {
       logger.error('Error during nightly cleanup:', { error: error.message });
