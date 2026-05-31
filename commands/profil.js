@@ -22,8 +22,9 @@ function drawRect(image, x, y, w, h, colorHex) {
   });
 }
 
-// ── Helper: Transliterate Turkish characters to ASCII ───────────────────────
-// Jimp bitmap fonts don't include ş, ı, ğ, ü, ö, ç, İ etc. This prevents "?" rendering.
+// ── Helper: Transliterate Turkish characters to ASCII & strip unsupported chars ─
+// Jimp bitmap fonts only include basic ASCII. This prevents "?" rendering for
+// Turkish chars (ş, ı, ğ, ü, ö, ç) AND emoji/unicode symbols in role names.
 function toAscii(text) {
   if (!text) return '';
   return text
@@ -35,7 +36,10 @@ function toAscii(text) {
     .replace(/ç/g, 'c').replace(/Ç/g, 'C')
     .replace(/â/g, 'a').replace(/Â/g, 'A')
     .replace(/î/g, 'i').replace(/Î/g, 'I')
-    .replace(/û/g, 'u').replace(/Û/g, 'U');
+    .replace(/û/g, 'u').replace(/Û/g, 'U')
+    // Strip ALL remaining non-ASCII characters (emoji, special unicode, etc.)
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
 }
 
 // ── Helper: Local Turkish date formatter (already transliterated) ───────────
@@ -220,21 +224,30 @@ export default {
       logger.debug(`Template dimensions: ${tW}x${tH}`);
 
       // ── A. Composite Minecraft Skin Render (left frame area) ──────────
+      // Left glass frame on this template: approx x:65-465, y:80-720
+      // Frame inner area: approx x:85-445, y:100-700 (padding ~20px from border)
+
+      const FRAME_X = 85, FRAME_Y = 100, FRAME_W = 360, FRAME_H = 600;
 
       const skinBuffer = await fetchSkinImage(uuid, mcNick);
       if (skinBuffer) {
         try {
           const skinImg = await Jimp.read(skinBuffer);
+          const origW = skinImg.width;
+          const origH = skinImg.height;
 
-          // Scale skin to fit the left glass frame (~40% of template width, ~55% of height)
-          const skinTargetW = Math.round(tW * 0.28);
-          const skinTargetH = Math.round(tH * 0.50);
-          skinImg.resize({ w: skinTargetW, h: skinTargetH });
+          // Preserve aspect ratio: fit within the frame
+          const scale = Math.min(FRAME_W / origW, FRAME_H / origH);
+          const newW = Math.round(origW * scale);
+          const newH = Math.round(origH * scale);
+          skinImg.resize({ w: newW, h: newH });
 
           // Center skin inside the left glass frame
-          const skinX = Math.round(tW * 0.09) + Math.round((tW * 0.32 - skinTargetW) / 2);
-          const skinY = Math.round(tH * 0.12) + Math.round((tH * 0.55 - skinTargetH) / 2);
+          const skinX = FRAME_X + Math.round((FRAME_W - newW) / 2);
+          const skinY = FRAME_Y + Math.round((FRAME_H - newH) / 2);
           imageCard.composite(skinImg, skinX, skinY);
+
+          logger.debug(`Skin composited: orig ${origW}x${origH}, scaled ${newW}x${newH}, pos (${skinX},${skinY})`);
         } catch (err) {
           logger.warn(`Failed to composite skin image for ${mcNick}: ${err.message}`);
         }
@@ -246,92 +259,59 @@ export default {
       const font32 = await loadFont(SANS_32_WHITE);
       const font16 = await loadFont(SANS_16_WHITE);
 
-      // ── C. Right side panels — coordinates relative to template ────────
-      // The template has 3 glass panels on the right side (~55% to ~92% width, stacked vertically)
+      // ── C. Right side panels — PIXEL-PRECISE coordinates ─────────────────
+      // Template: 1024x1024
+      // Right Panel 1 (name+badges):  inner area ~x:530-945, y:95-270
+      // Right Panel 2 (playtime):     inner area ~x:530-945, y:310-485
+      // Right Panel 3 (role+join):    inner area ~x:530-945, y:525-695
 
-      const rightPanelX = Math.round(tW * 0.56);     // Left edge of right panels
-      const rightTextX  = Math.round(tW * 0.58);      // Text indent inside panels
+      const RX = 540;  // Right panels text left margin
 
-      // Panel 1: Player Name + Badges (top right panel, ~10% to ~32% height)
-      const panel1Y = Math.round(tH * 0.12);
-
-      // Print MC Nick
+      // ─── Panel 1: Player Name + Badges ─────────────────────────────────
       const nickSafe = toAscii(mcNick);
       imageCard.print({
         font: nickSafe.length > 12 ? font32 : font64,
-        x: rightTextX,
-        y: panel1Y + Math.round(tH * 0.03),
+        x: RX,
+        y: 110,
         text: nickSafe
       });
 
-      // Draw Badges below name
-      let badgeX = rightTextX;
-      const badgeY = panel1Y + Math.round(tH * 0.12);
+      // Badges row
+      let badgeX = RX;
+      const badgeY = 195;
 
       if (isBooster) {
-        drawRect(imageCard, badgeX, badgeY, 150, 36, 0x7B1FA2CC);
-        imageCard.print({ font: font16, x: badgeX + 30, y: badgeY + 10, text: 'BOOSTER' });
-        badgeX += 165;
+        drawRect(imageCard, badgeX, badgeY, 140, 32, 0x7B1FA2CC);
+        imageCard.print({ font: font16, x: badgeX + 28, y: badgeY + 8, text: 'BOOSTER' });
+        badgeX += 155;
       }
       if (isConsistent) {
-        drawRect(imageCard, badgeX, badgeY, 160, 36, 0x2E7D32CC);
-        imageCard.print({ font: font16, x: badgeX + 22, y: badgeY + 10, text: 'ISTIKRARLI' });
+        drawRect(imageCard, badgeX, badgeY, 155, 32, 0x2E7D32CC);
+        imageCard.print({ font: font16, x: badgeX + 20, y: badgeY + 8, text: 'ISTIKRARLI' });
       }
 
-      // Panel 2: Stats — Playtime + Join Date (middle right panel, ~35% to ~56% height)
-      const panel2Y = Math.round(tH * 0.36);
+      // ─── Panel 2: Toplam Oyun Süresi ───────────────────────────────────
+      imageCard.print({ font: font16, x: RX, y: 325, text: 'Toplam Oyun Suresi' });
+      imageCard.print({ font: font32, x: RX, y: 355, text: `${playtimeHours} Saat` });
 
-      // Playtime
-      imageCard.print({ font: font16, x: rightTextX, y: panel2Y + Math.round(tH * 0.03), text: 'Toplam Oyun Suresi' });
-      imageCard.print({
-        font: font32,
-        x: rightTextX,
-        y: panel2Y + Math.round(tH * 0.07),
-        text: `${playtimeHours} Saat`
-      });
+      // Sunucuya Katılım (still in panel 2)
+      imageCard.print({ font: font16, x: RX, y: 415, text: 'Sunucuya Katilim' });
+      imageCard.print({ font: font32, x: RX, y: 440, text: formatProfileDate(profileData.firstSeen || Date.now()) });
 
-      // Join date
-      imageCard.print({
-        font: font16,
-        x: rightTextX,
-        y: panel2Y + Math.round(tH * 0.14),
-        text: 'Sunucuya Katilim'
-      });
-      imageCard.print({
-        font: font32,
-        x: rightTextX,
-        y: panel2Y + Math.round(tH * 0.18),
-        text: formatProfileDate(profileData.firstSeen || Date.now())
-      });
-
-      // Panel 3: Active Role (bottom right panel, ~59% to ~72% height)
-      const panel3Y = Math.round(tH * 0.60);
-
-      imageCard.print({
-        font: font16,
-        x: rightTextX,
-        y: panel3Y + Math.round(tH * 0.03),
-        text: 'Aktif Rol'
-      });
-      imageCard.print({
-        font: font32,
-        x: rightTextX,
-        y: panel3Y + Math.round(tH * 0.07),
-        text: toAscii(memberRoleName)
-      });
+      // ─── Panel 3: Aktif Rol + Online status ────────────────────────────
+      imageCard.print({ font: font16, x: RX, y: 540, text: 'Aktif Rol' });
+      imageCard.print({ font: font32, x: RX, y: 565, text: toAscii(memberRoleName) });
 
       // Online status indicator
       if (profileData.isOnline) {
-        const dotX = rightTextX;
-        const dotY = panel3Y + Math.round(tH * 0.15);
-        drawRect(imageCard, dotX, dotY, 14, 14, 0x00E676FF);
-        imageCard.print({ font: font16, x: dotX + 20, y: dotY, text: 'Su An Oyunda' });
+        drawRect(imageCard, RX, 620, 14, 14, 0x00E676FF);
+        imageCard.print({ font: font16, x: RX + 22, y: 620, text: 'Su An Oyunda' });
       }
 
       // ── D. Bottom Banner — VIP & Destekci ──────────────────────────────
-      // Bottom gold banner spans full width (~78% to ~93% height)
-      const bottomY = Math.round(tH * 0.79);
-      const bottomTextX = Math.round(tW * 0.10);
+      // Bottom gold banner inner area: approx x:75-955, y:755-925
+      const BTM_X = 95;
+      const BTM_Y = 770;
 
       const timedRolesData = await PanelAPI.getTimedRoles();
       const rolesList = timedRolesData.roles || [];
@@ -357,18 +337,13 @@ export default {
         const daysLeft = Math.max(0, Math.ceil(totalSecsLeft / 86400));
 
         // VIP Title
-        imageCard.print({
-          font: font32,
-          x: bottomTextX,
-          y: bottomY + Math.round(tH * 0.01),
-          text: `VIP: ${toAscii(vipRoleName).toUpperCase()}`
-        });
+        imageCard.print({ font: font32, x: BTM_X, y: BTM_Y, text: `VIP: ${toAscii(vipRoleName).toUpperCase()}` });
 
-        // Progress bar
-        const barX = bottomTextX;
-        const barY = bottomY + Math.round(tH * 0.06);
-        const barW = Math.round(tW * 0.80);
-        const barH = 10;
+        // Progress bar (within banner bounds)
+        const barX = BTM_X;
+        const barY = BTM_Y + 50;
+        const barW = 830;
+        const barH = 12;
 
         drawRect(imageCard, barX, barY, barW, barH, 0x3E3E3EFF);
         const barFill = Math.min(barW, Math.max(0, Math.round((daysLeft / 30) * barW)));
@@ -377,31 +352,11 @@ export default {
         }
 
         // Days remaining
-        imageCard.print({
-          font: font16,
-          x: bottomTextX,
-          y: bottomY + Math.round(tH * 0.09),
-          text: `Kalan VIP Suresi: ${daysLeft} Gun`
-        });
+        imageCard.print({ font: font16, x: BTM_X, y: BTM_Y + 72, text: `Kalan VIP Suresi: ${daysLeft} Gun` });
       } else {
-        imageCard.print({
-          font: font32,
-          x: bottomTextX,
-          y: bottomY + Math.round(tH * 0.01),
-          text: 'VIP & DESTEKCI'
-        });
-        imageCard.print({
-          font: font16,
-          x: bottomTextX,
-          y: bottomY + Math.round(tH * 0.06),
-          text: 'Destekci olmak ve VIP ayricaliklarindan'
-        });
-        imageCard.print({
-          font: font16,
-          x: bottomTextX,
-          y: bottomY + Math.round(tH * 0.09),
-          text: 'yararlanmak icin yetkililerle gorusun!'
-        });
+        imageCard.print({ font: font32, x: BTM_X, y: BTM_Y, text: 'VIP & DESTEKCI' });
+        imageCard.print({ font: font16, x: BTM_X, y: BTM_Y + 45, text: 'Destekci olmak ve VIP ayricaliklarindan' });
+        imageCard.print({ font: font16, x: BTM_X, y: BTM_Y + 68, text: 'yararlanmak icin yetkililerle gorusun!' });
       }
 
       // ── E. Render final image and send to Discord ─────────────────────
