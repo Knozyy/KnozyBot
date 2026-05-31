@@ -1,13 +1,42 @@
-import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
+import { SlashCommandBuilder, AttachmentBuilder } from 'discord.js';
 import PanelAPI from '../services/PanelAPI.js';
 import { embeds } from '../services/embeds.js';
 import { logger } from '../core/logger.js';
 import axios from 'axios';
+import path from 'path';
+import { Jimp, loadFont } from 'jimp';
+import { SANS_64_WHITE, SANS_32_WHITE, SANS_16_WHITE } from 'jimp/fonts';
+
+// Helper to draw a filled rectangle directly onto Jimp bitmap (pure-JS, robust)
+function drawRect(image, x, y, w, h, colorHex) {
+  const r = (colorHex >> 24) & 0xFF;
+  const g = (colorHex >> 16) & 0xFF;
+  const b = (colorHex >> 8) & 0xFF;
+  const a = colorHex & 0xFF;
+  
+  image.scan(x, y, w, h, function(xCoord, yCoord, idx) {
+    this.bitmap.data[idx] = r;
+    this.bitmap.data[idx + 1] = g;
+    this.bitmap.data[idx + 2] = b;
+    this.bitmap.data[idx + 3] = a;
+  });
+}
+
+// Local Turkish date formatter
+function formatProfileDate(timestamp) {
+  if (!timestamp) return 'Bilinmiyor';
+  const date = new Date(timestamp);
+  const months = [
+    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+  ];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
 
 export default {
   data: new SlashCommandBuilder()
     .setName('profil')
-    .setDescription('Oyuncu profil kartını görüntüler')
+    .setDescription('Oyuncunun premium Steam benzeri profil kartını görüntüler')
     .addUserOption((option) =>
       option
         .setName('kullanici')
@@ -38,7 +67,6 @@ export default {
 
       if (targetNick) {
         mcNick = targetNick.trim();
-        // Try to find if this mcNick is linked to a Discord user
         const link = entries.find((e) => e.mcNick.toLowerCase() === mcNick.toLowerCase());
         if (link) {
           try {
@@ -59,7 +87,6 @@ export default {
         }
         mcNick = link.mcNick;
       } else {
-        // Self lookup
         linkedUser = interaction.user;
         const link = entries.find((e) => e.userId === interaction.user.id);
         if (!link) {
@@ -72,8 +99,8 @@ export default {
         mcNick = link.mcNick;
       }
 
-      // 1. Fetch Mojang UUID (for high-fidelity 3D skin render)
-      let uuid = null;
+      // 1. Fetch Mojang UUID
+      let uuid = '8667ba71b85a4004af544b3a8597e68d'; // Default Steve
       try {
         const mojangResp = await axios.get(
           `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(mcNick)}`,
@@ -81,145 +108,185 @@ export default {
         );
         if (mojangResp.status === 200 && mojangResp.data.id) {
           uuid = mojangResp.data.id;
-          mcNick = mojangResp.data.name; // Canonical capitalization
+          mcNick = mojangResp.data.name; // Use canonical name capitalization
         }
       } catch (err) {
         logger.debug(`Could not resolve Mojang UUID for ${mcNick}: ${err.message}`);
       }
 
-      // 2. Fetch Player stats & session details from Panel backend
+      // 2. Fetch Player stats from Panel backend
       let profileData = null;
       try {
         profileData = await PanelAPI.getPlayerProfile(mcNick);
       } catch (err) {
         logger.warn(`Could not get panel profile for ${mcNick}: ${err.message}`);
-        // Fallback profile details if panel lacks statistics yet
         profileData = {
           username: mcNick,
           isOnline: false,
           totalSeconds: 0,
-          sessions: []
+          sessions: [],
+          firstSeen: Date.now()
         };
       }
 
-      // 3. Determine if Booster and Online
+      // 3. Determine Booster & Active role
       const guild = interaction.guild;
       let isBooster = false;
+      let memberRoleName = 'Oyuncu';
+
       if (linkedUser && guild) {
         try {
           const member = await guild.members.fetch(linkedUser.id);
           isBooster = !!member.premiumSince;
+          
+          // Get highest non-default role name
+          const roles = member.roles.cache
+            .filter((r) => r.name !== '@everyone')
+            .sort((a, b) => b.position - a.position);
+          if (roles.size > 0) {
+            memberRoleName = roles.first().name;
+          }
         } catch {
           isBooster = false;
         }
       }
 
-      const isOnline = profileData.isOnline || false;
+      // Calculate consistency
+      const playtimeHours = Math.round((profileData.totalSeconds || 0) / 3600);
+      const recentSessionsCount = profileData.sessions?.filter(
+        (s) => Date.now() - s.joined_at < 7 * 24 * 60 * 60 * 1000
+      ).length || 0;
+      const isConsistent = recentSessionsCount >= 3 || playtimeHours > 10;
 
-      // 4. Create Interactive Tab Buttons
-      const getButtons = (activeTab) => {
-        const row = new ActionRowBuilder();
+      // 4. Draw Premium Image Card using Jimp
+      const TEMPLATE_PATH = path.resolve('./assets/profile_bg.png');
+      logger.info(`Rendering profile card for ${mcNick} using template: ${TEMPLATE_PATH}`);
 
-        const btnGeneral = new ButtonBuilder()
-          .setCustomId('profile_tab_general')
-          .setLabel('🎮 Genel Profil')
-          .setStyle(activeTab === 'general' ? ButtonStyle.Success : ButtonStyle.Secondary);
+      let imageCard = null;
+      try {
+        imageCard = await Jimp.read(TEMPLATE_PATH);
+      } catch (err) {
+        logger.error(`Failed to load profile background template: ${err.message}`);
+        // Fallback to text embed if background image is missing
+        const fallbackEmbed = embeds.profileEmbed(profileData, uuid, linkedUser, isBooster, profileData.isOnline);
+        return await interaction.editReply({ embeds: [fallbackEmbed] });
+      }
 
-        const btnVip = new ButtonBuilder()
-          .setCustomId('profile_tab_vip')
-          .setLabel('👑 VIP & Destekçi')
-          .setStyle(activeTab === 'vip' ? ButtonStyle.Success : ButtonStyle.Secondary);
+      // A. Composite 3D Minecraft Skin Render (placed inside left frame)
+      try {
+        const skinUrl = `https://crafatar.com/renders/body/${uuid}?overlay`;
+        const skinResponse = await axios.get(skinUrl, { responseType: 'arraybuffer', timeout: 5000 });
+        const skinBuffer = Buffer.from(skinResponse.data);
+        const skinImg = await Jimp.read(skinBuffer);
+        
+        // Resize and blit skin to base template (Skin position: X: 110, Y: 180)
+        skinImg.resize({ w: 320, h: 640 });
+        imageCard.blit(skinImg, 80, 160);
+      } catch (err) {
+        logger.warn(`Could not render 3D skin for ${mcNick}: ${err.message}`);
+      }
 
-        row.addComponents(btnGeneral, btnVip);
-        return row;
-      };
+      // B. Load Fonts
+      const font64 = await loadFont(SANS_64_WHITE);
+      const font32 = await loadFont(SANS_32_WHITE);
+      const font16 = await loadFont(SANS_16_WHITE);
 
-      // Initial tab: General Profile
-      const initialEmbed = embeds.profileEmbed(profileData, uuid, linkedUser, isBooster, isOnline);
-      const message = await interaction.editReply({
-        embeds: [initialEmbed],
-        components: [getButtons('general')]
+      // C. Print Nickname (Right top, X: 480, Y: 155)
+      imageCard.print({
+        font: mcNick.length > 12 ? font32 : font64,
+        x: 480,
+        y: 155,
+        text: mcNick
       });
 
-      // 5. Button Interaction Collector (lasts for 2 minutes)
-      const collector = message.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 120 * 1000
-      });
+      // D. Draw Badges (Purple Booster and Green Istikrarli, below name)
+      let badgeX = 480;
+      if (isBooster) {
+        // Draw Purple slot (Booster)
+        drawRect(imageCard, badgeX, 245, 170, 42, 0x7B1FA2FF);
+        imageCard.print({ font: font16, x: badgeX + 35, y: 255, text: 'Booster' });
+        badgeX += 190;
+      }
+      if (isConsistent) {
+        // Draw Green slot (Istikrarli)
+        drawRect(imageCard, badgeX, 245, 170, 42, 0x2E7D32FF);
+        imageCard.print({ font: font16, x: badgeX + 30, y: 255, text: 'Istikrarli' });
+      }
 
-      collector.on('collect', async (btnInt) => {
-        if (btnInt.user.id !== interaction.user.id) {
-          return await btnInt.reply({
-            content: 'Bu profil kartının sekmelerini sadece sorguyu yapan kişi değiştirebilir!',
-            ephemeral: true
-          });
-        }
+      // E. Print Main Statistics
+      // ⏱️ Toplam Oyun Süresi (X: 520, Y: 350)
+      imageCard.print({ font: font16, x: 535, y: 350, text: 'Toplam Oyun Suresi:' });
+      imageCard.print({ font: font32, x: 535, y: 375, text: `${playtimeHours} Saat` });
 
-        await btnInt.deferUpdate();
+      // 📅 Sunucuya Katılım (X: 520, Y: 460)
+      imageCard.print({ font: font16, x: 535, y: 465, text: 'Sunucuya Katilim:' });
+      imageCard.print({ font: font32, x: 535, y: 490, text: formatProfileDate(profileData.firstSeen || Date.now()) });
 
+      // 🛡️ Aktif Rol (X: 520, Y: 580)
+      imageCard.print({ font: font16, x: 535, y: 580, text: 'Aktif Rol:' });
+      imageCard.print({ font: font32, x: 535, y: 605, text: memberRoleName });
+
+      // F. Print VIP & Destekçi Box Details (At the bottom, X: 520, Y: 720)
+      const timedRolesData = await PanelAPI.getTimedRoles();
+      const rolesList = timedRolesData.roles || [];
+      const userVip = linkedUser ? rolesList.find((r) => r.user_id === linkedUser.id) : null;
+
+      let vipRoleName = null;
+      let expiryTimestamp = null;
+
+      if (userVip && guild) {
         try {
-          if (btnInt.customId === 'profile_tab_general') {
-            const generalEmbed = embeds.profileEmbed(profileData, uuid, linkedUser, isBooster, isOnline);
-            await btnInt.editReply({
-              embeds: [generalEmbed],
-              components: [getButtons('general')]
-            });
-          } else if (btnInt.customId === 'profile_tab_vip') {
-            // Find VIP and timed roles
-            const timedRolesData = await PanelAPI.getTimedRoles();
-            const rolesList = timedRolesData.roles || [];
-            
-            // Search for their active timed role
-            const userVip = linkedUser ? rolesList.find((r) => r.user_id === linkedUser.id) : null;
-            let vipRole = null;
-            let expiryTimestamp = null;
-
-            if (userVip && guild) {
-              try {
-                const role = await guild.roles.fetch(userVip.role_id);
-                if (role) {
-                  vipRole = { name: role.name };
-                  expiryTimestamp = userVip.expiry_timestamp;
-                }
-              } catch {
-                vipRole = null;
-              }
-            }
-
-            const vipEmbed = embeds.vipProfileEmbed(profileData, uuid, linkedUser, vipRole, expiryTimestamp);
-            await btnInt.editReply({
-              embeds: [vipEmbed],
-              components: [getButtons('vip')]
-            });
+          const role = await guild.roles.fetch(userVip.role_id);
+          if (role) {
+            vipRoleName = role.name;
+            expiryTimestamp = userVip.expiry_timestamp;
           }
-        } catch (error) {
-          logger.error('Error switching profile tabs:', { error: error.message });
+        } catch {
+          vipRoleName = null;
         }
+      }
+
+      if (vipRoleName) {
+        const totalSecsLeft = expiryTimestamp - Math.floor(Date.now() / 1000);
+        const daysLeft = Math.max(0, Math.ceil(totalSecsLeft / 86400));
+
+        // Print VIP Rank Info
+        imageCard.print({ font: font32, x: 535, y: 730, text: `VIP STATUS: ${vipRoleName.toUpperCase()}` });
+        
+        // Draw beautiful golden progress bar (W: 380, H: 12)
+        // Background track (dark grey)
+        drawRect(imageCard, 535, 785, 380, 12, 0x3E3E3EFF);
+        
+        // Gold fill track
+        const barFillWidth = Math.min(380, Math.max(0, Math.round((daysLeft / 30) * 380)));
+        if (barFillWidth > 0) {
+          drawRect(imageCard, 535, 785, barFillWidth, 12, 0xD4AF37FF);
+        }
+
+        // Days left text
+        imageCard.print({ font: font16, x: 535, y: 812, text: `Kalan VIP Suresi: ${daysLeft} Gun` });
+      } else {
+        // Default guest / support info inside box
+        imageCard.print({ font: font32, x: 535, y: 725, text: 'VIP & DESTEKCI' });
+        imageCard.print({ font: font16, x: 535, y: 775, text: 'Destekci olmak ve VIP ayricaliklarindan' });
+        imageCard.print({ font: font16, x: 535, y: 805, text: 'yararlanmak icin yetkililerle gorusun!' });
+      }
+
+      // G. Render image as Buffer and send to Discord
+      const imageBuffer = await imageCard.getBuffer('image/png');
+      const attachment = new AttachmentBuilder(imageBuffer, { name: `${mcNick}_profile.png` });
+
+      // Send the high-fidelity composite PNG image directly
+      await interaction.editReply({
+        files: [attachment],
+        embeds: [],
+        components: []
       });
 
-      collector.on('end', async () => {
-        // Disable buttons when expired
-        try {
-          const disabledRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('disabled_general')
-              .setLabel('🎮 Genel Profil')
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true),
-            new ButtonBuilder()
-              .setCustomId('disabled_vip')
-              .setLabel('👑 VIP & Destekçi')
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          );
-          await interaction.editReply({ components: [disabledRow] }).catch(() => {});
-        } catch {
-          // ignore if message deleted
-        }
-      });
+      logger.info(`Profile card rendered and sent successfully for ${mcNick}`);
 
     } catch (error) {
-      logger.error('Error executing profile command:', { error: error.message });
+      logger.error('Error executing premium profile command:', { error: error.message });
       const errEmbed = embeds.errorEmbed(
         'Hata',
         error.message || 'Profil sorgulanırken bir hata oluştu.'
