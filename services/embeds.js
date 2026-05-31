@@ -101,6 +101,73 @@ export const embeds = {
 
     return embed;
   },
+
+  // Main player profile embed
+  profileEmbed: (playerData, uuid, discordUser, isBooster, isOnline) => {
+    const playtimeHours = Math.round((playerData.totalSeconds || 0) / 3600);
+    const lastSeenFormatted = playerData.lastSeen
+      ? `<t:${Math.floor(playerData.lastSeen / 1000)}:R>`
+      : 'Bilinmiyor';
+    const firstSeenFormatted = playerData.firstSeen
+      ? `<t:${Math.floor(playerData.firstSeen / 1000)}:D>`
+      : 'Bilinmiyor';
+
+    const badges = [];
+    if (isBooster) badges.push('🔮 **Booster**');
+    
+    // Calculate consistency: active in the last 7 days (at least 3 session count or total hours)
+    const recentSessionsCount = playerData.sessions?.filter(
+      (s) => Date.now() - s.joined_at < 7 * 24 * 60 * 60 * 1000
+    ).length || 0;
+    
+    if (recentSessionsCount >= 3 || playtimeHours > 10) {
+      badges.push('🟢 **İstikrarlı**');
+    }
+
+    const badgeStr = badges.length > 0 ? badges.join(' · ') : 'Henüz rozet yok';
+
+    return new EmbedBuilder()
+      .setColor(isOnline ? '#2ecc71' : '#7f8c8d')
+      .setTitle(`🎴 ${playerData.username} Oyuncu Profili`)
+      .setDescription(`Bu profil **${discordUser ? `<@${discordUser.id}>` : 'Bilinmeyen'}** adlı kullanıcıya aittir.`)
+      .setThumbnail(`https://crafatar.com/renders/body/${uuid || '8667ba71-b85a-4004-af54-4b3a8597e68d'}?overlay`)
+      .addFields(
+        { name: '⭐ Kazanılan Rozetler', value: badgeStr, inline: false },
+        { name: '⏱️ Toplam Oyun Süresi', value: `\`${playtimeHours} Saat\``, inline: true },
+        { name: '📅 Sunucuya Katılım', value: firstSeenFormatted, inline: true },
+        { name: '🟢 Aktiflik Durumu', value: isOnline ? '🟢 **Şu an oyunda**' : `🔴 Çevrimdışı (Son giriş: ${lastSeenFormatted})`, inline: false }
+      )
+      .setTimestamp();
+  },
+
+  // VIP player profile embed
+  vipProfileEmbed: (playerData, uuid, discordUser, vipRole, expiryTimestamp) => {
+    const embed = new EmbedBuilder()
+      .setColor('#f1c40f')
+      .setTitle(`👑 VIP & Destekçi Bilgisi - ${playerData.username}`)
+      .setThumbnail(`https://crafatar.com/renders/body/${uuid || '8667ba71-b85a-4004-af54-4b3a8597e68d'}?overlay`)
+      .setTimestamp();
+
+    if (vipRole) {
+      const totalSecsLeft = expiryTimestamp - Math.floor(Date.now() / 1000);
+      const daysLeft = Math.max(0, Math.ceil(totalSecsLeft / 86400));
+      
+      // Visual progress bar of 10 blocks (30 days total assumed or just 10 blocks showing active state)
+      const barLength = 10;
+      const filledBlocks = Math.min(barLength, Math.max(0, Math.round((daysLeft / 30) * barLength)));
+      const progressBar = '▰'.repeat(filledBlocks) + '▱'.repeat(barLength - filledBlocks);
+
+      embed.addFields(
+        { name: '👑 Aktif VIP Üyeliği', value: `**${vipRole.name}**`, inline: true },
+        { name: '⏳ Kalan VIP Süresi', value: `\`${daysLeft} Gün\``, inline: true },
+        { name: '📊 Üyelik İlerlemesi', value: `\`[${progressBar}]\` (Kalan: ${daysLeft} gün)`, inline: false }
+      );
+    } else {
+      embed.setDescription('Bu kullanıcının aktif bir VIP üyeliği bulunmamaktadır.\nSunucumuza destek olmak ve VIP ayrıcalıklarından yararlanmak için yöneticilerle iletişime geçebilirsiniz!');
+    }
+
+    return embed;
+  },
 };
 
 export default embeds;

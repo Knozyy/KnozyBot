@@ -190,6 +190,12 @@ class PanelAPI {
     return response.data;
   }
 
+  // Player Profile
+  async getPlayerProfile(username) {
+    const response = await this.client.get(`/api/players/profile/${username}`);
+    return response.data;
+  }
+
   // Health Check
   async healthCheck() {
     const response = await this.client.get(`/api/health`);
