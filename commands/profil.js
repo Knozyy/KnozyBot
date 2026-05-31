@@ -7,14 +7,14 @@ import path from 'path';
 import { Jimp, loadFont } from 'jimp';
 import { SANS_64_WHITE, SANS_32_WHITE, SANS_16_WHITE } from 'jimp/fonts';
 
-// Helper to draw a filled rectangle directly onto Jimp bitmap (pure-JS, robust)
+// ── Helper: Draw a filled rectangle directly onto Jimp bitmap ───────────────
 function drawRect(image, x, y, w, h, colorHex) {
   const r = (colorHex >> 24) & 0xFF;
   const g = (colorHex >> 16) & 0xFF;
   const b = (colorHex >> 8) & 0xFF;
   const a = colorHex & 0xFF;
-  
-  image.scan(x, y, w, h, function(xCoord, yCoord, idx) {
+
+  image.scan(x, y, w, h, function (xCoord, yCoord, idx) {
     this.bitmap.data[idx] = r;
     this.bitmap.data[idx + 1] = g;
     this.bitmap.data[idx + 2] = b;
@@ -22,15 +22,57 @@ function drawRect(image, x, y, w, h, colorHex) {
   });
 }
 
-// Local Turkish date formatter
+// ── Helper: Transliterate Turkish characters to ASCII ───────────────────────
+// Jimp bitmap fonts don't include ş, ı, ğ, ü, ö, ç, İ etc. This prevents "?" rendering.
+function toAscii(text) {
+  if (!text) return '';
+  return text
+    .replace(/ı/g, 'i').replace(/İ/g, 'I')
+    .replace(/ş/g, 's').replace(/Ş/g, 'S')
+    .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+    .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+    .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+    .replace(/ç/g, 'c').replace(/Ç/g, 'C')
+    .replace(/â/g, 'a').replace(/Â/g, 'A')
+    .replace(/î/g, 'i').replace(/Î/g, 'I')
+    .replace(/û/g, 'u').replace(/Û/g, 'U');
+}
+
+// ── Helper: Local Turkish date formatter (already transliterated) ───────────
 function formatProfileDate(timestamp) {
   if (!timestamp) return 'Bilinmiyor';
   const date = new Date(timestamp);
   const months = [
-    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+    'Ocak', 'Subat', 'Mart', 'Nisan', 'Mayis', 'Haziran',
+    'Temmuz', 'Agustos', 'Eylul', 'Ekim', 'Kasim', 'Aralik'
   ];
   return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+// ── Helper: Try multiple skin APIs with fallback ────────────────────────────
+async function fetchSkinImage(uuid, mcNick) {
+  // List of skin render APIs to try in order
+  const skinApis = [
+    { name: 'mc-heads', url: `https://mc-heads.net/body/${encodeURIComponent(mcNick)}/600` },
+    { name: 'minotar', url: `https://minotar.net/body/${encodeURIComponent(mcNick)}/300.png` },
+    { name: 'crafatar', url: `https://crafatar.com/renders/body/${uuid}?overlay&size=4` },
+  ];
+
+  for (const api of skinApis) {
+    try {
+      logger.debug(`Trying skin API: ${api.name} for ${mcNick}`);
+      const resp = await axios.get(api.url, { responseType: 'arraybuffer', timeout: 6000 });
+      if (resp.status === 200 && resp.data && resp.data.length > 100) {
+        logger.info(`Skin fetched from ${api.name} for ${mcNick}`);
+        return Buffer.from(resp.data);
+      }
+    } catch (err) {
+      logger.warn(`Skin API ${api.name} failed for ${mcNick}: ${err.message}`);
+    }
+  }
+
+  logger.warn(`All skin APIs failed for ${mcNick}, card will render without skin`);
+  return null;
 }
 
 export default {
@@ -138,7 +180,7 @@ export default {
         try {
           const member = await guild.members.fetch(linkedUser.id);
           isBooster = !!member.premiumSince;
-          
+
           // Get highest non-default role name
           const roles = member.roles.cache
             .filter((r) => r.name !== '@everyone')
@@ -158,7 +200,8 @@ export default {
       ).length || 0;
       const isConsistent = recentSessionsCount >= 3 || playtimeHours > 10;
 
-      // 4. Draw Premium Image Card using Jimp
+      // ─── 4. Draw Premium Image Card using Jimp ───────────────────────────
+
       const TEMPLATE_PATH = path.resolve('./assets/profile_bg.png');
       logger.info(`Rendering profile card for ${mcNick} using template: ${TEMPLATE_PATH}`);
 
@@ -167,66 +210,129 @@ export default {
         imageCard = await Jimp.read(TEMPLATE_PATH);
       } catch (err) {
         logger.error(`Failed to load profile background template: ${err.message}`);
-        // Fallback to text embed if background image is missing
         const fallbackEmbed = embeds.profileEmbed(profileData, uuid, linkedUser, isBooster, profileData.isOnline);
         return await interaction.editReply({ embeds: [fallbackEmbed] });
       }
 
-      // A. Composite 3D Minecraft Skin Render (placed inside left frame)
-      try {
-        const skinUrl = `https://crafatar.com/renders/body/${uuid}?overlay`;
-        const skinResponse = await axios.get(skinUrl, { responseType: 'arraybuffer', timeout: 5000 });
-        const skinBuffer = Buffer.from(skinResponse.data);
-        const skinImg = await Jimp.read(skinBuffer);
-        
-        // Resize and blit skin to base template (Skin position: X: 110, Y: 180)
-        skinImg.resize({ w: 320, h: 640 });
-        imageCard.blit(skinImg, 80, 160);
-      } catch (err) {
-        logger.warn(`Could not render 3D skin for ${mcNick}: ${err.message}`);
+      // Get template dimensions for coordinate calculations
+      const tW = imageCard.width;
+      const tH = imageCard.height;
+      logger.debug(`Template dimensions: ${tW}x${tH}`);
+
+      // ── A. Composite Minecraft Skin Render (left frame area) ──────────
+
+      const skinBuffer = await fetchSkinImage(uuid, mcNick);
+      if (skinBuffer) {
+        try {
+          const skinImg = await Jimp.read(skinBuffer);
+
+          // Scale skin to fit the left glass frame (~40% of template width, ~55% of height)
+          const skinTargetW = Math.round(tW * 0.28);
+          const skinTargetH = Math.round(tH * 0.50);
+          skinImg.resize({ w: skinTargetW, h: skinTargetH });
+
+          // Center skin inside the left glass frame
+          const skinX = Math.round(tW * 0.09) + Math.round((tW * 0.32 - skinTargetW) / 2);
+          const skinY = Math.round(tH * 0.12) + Math.round((tH * 0.55 - skinTargetH) / 2);
+          imageCard.composite(skinImg, skinX, skinY);
+        } catch (err) {
+          logger.warn(`Failed to composite skin image for ${mcNick}: ${err.message}`);
+        }
       }
 
-      // B. Load Fonts
+      // ── B. Load Fonts ─────────────────────────────────────────────────
+
       const font64 = await loadFont(SANS_64_WHITE);
       const font32 = await loadFont(SANS_32_WHITE);
       const font16 = await loadFont(SANS_16_WHITE);
 
-      // C. Print Nickname (Right top, X: 480, Y: 155)
+      // ── C. Right side panels — coordinates relative to template ────────
+      // The template has 3 glass panels on the right side (~55% to ~92% width, stacked vertically)
+
+      const rightPanelX = Math.round(tW * 0.56);     // Left edge of right panels
+      const rightTextX  = Math.round(tW * 0.58);      // Text indent inside panels
+
+      // Panel 1: Player Name + Badges (top right panel, ~10% to ~32% height)
+      const panel1Y = Math.round(tH * 0.12);
+
+      // Print MC Nick
+      const nickSafe = toAscii(mcNick);
       imageCard.print({
-        font: mcNick.length > 12 ? font32 : font64,
-        x: 480,
-        y: 155,
-        text: mcNick
+        font: nickSafe.length > 12 ? font32 : font64,
+        x: rightTextX,
+        y: panel1Y + Math.round(tH * 0.03),
+        text: nickSafe
       });
 
-      // D. Draw Badges (Purple Booster and Green Istikrarli, below name)
-      let badgeX = 480;
+      // Draw Badges below name
+      let badgeX = rightTextX;
+      const badgeY = panel1Y + Math.round(tH * 0.12);
+
       if (isBooster) {
-        // Draw Purple slot (Booster)
-        drawRect(imageCard, badgeX, 245, 170, 42, 0x7B1FA2FF);
-        imageCard.print({ font: font16, x: badgeX + 35, y: 255, text: 'Booster' });
-        badgeX += 190;
+        drawRect(imageCard, badgeX, badgeY, 150, 36, 0x7B1FA2CC);
+        imageCard.print({ font: font16, x: badgeX + 30, y: badgeY + 10, text: 'BOOSTER' });
+        badgeX += 165;
       }
       if (isConsistent) {
-        // Draw Green slot (Istikrarli)
-        drawRect(imageCard, badgeX, 245, 170, 42, 0x2E7D32FF);
-        imageCard.print({ font: font16, x: badgeX + 30, y: 255, text: 'Istikrarli' });
+        drawRect(imageCard, badgeX, badgeY, 160, 36, 0x2E7D32CC);
+        imageCard.print({ font: font16, x: badgeX + 22, y: badgeY + 10, text: 'ISTIKRARLI' });
       }
 
-      // E. Print Main Statistics
-      // ⏱️ Toplam Oyun Süresi (X: 520, Y: 350)
-      imageCard.print({ font: font16, x: 535, y: 350, text: 'Toplam Oyun Suresi:' });
-      imageCard.print({ font: font32, x: 535, y: 375, text: `${playtimeHours} Saat` });
+      // Panel 2: Stats — Playtime + Join Date (middle right panel, ~35% to ~56% height)
+      const panel2Y = Math.round(tH * 0.36);
 
-      // 📅 Sunucuya Katılım (X: 520, Y: 460)
-      imageCard.print({ font: font16, x: 535, y: 465, text: 'Sunucuya Katilim:' });
-      imageCard.print({ font: font32, x: 535, y: 490, text: formatProfileDate(profileData.firstSeen || Date.now()) });
+      // Playtime
+      imageCard.print({ font: font16, x: rightTextX, y: panel2Y + Math.round(tH * 0.03), text: 'Toplam Oyun Suresi' });
+      imageCard.print({
+        font: font32,
+        x: rightTextX,
+        y: panel2Y + Math.round(tH * 0.07),
+        text: `${playtimeHours} Saat`
+      });
 
-      // 🛡️ Aktif Rol (X: 520, Y: 580)
-      imageCard.print({ font: font16, x: 535, y: 580, text: 'Aktif Rol:' });
-      imageCard.print({ font: font32, x: 535, y: 605, text: memberRoleName });
+      // Join date
+      imageCard.print({
+        font: font16,
+        x: rightTextX,
+        y: panel2Y + Math.round(tH * 0.14),
+        text: 'Sunucuya Katilim'
+      });
+      imageCard.print({
+        font: font32,
+        x: rightTextX,
+        y: panel2Y + Math.round(tH * 0.18),
+        text: formatProfileDate(profileData.firstSeen || Date.now())
+      });
 
-      // F. Print VIP & Destekçi Box Details (At the bottom, X: 520, Y: 720)
+      // Panel 3: Active Role (bottom right panel, ~59% to ~72% height)
+      const panel3Y = Math.round(tH * 0.60);
+
+      imageCard.print({
+        font: font16,
+        x: rightTextX,
+        y: panel3Y + Math.round(tH * 0.03),
+        text: 'Aktif Rol'
+      });
+      imageCard.print({
+        font: font32,
+        x: rightTextX,
+        y: panel3Y + Math.round(tH * 0.07),
+        text: toAscii(memberRoleName)
+      });
+
+      // Online status indicator
+      if (profileData.isOnline) {
+        const dotX = rightTextX;
+        const dotY = panel3Y + Math.round(tH * 0.15);
+        drawRect(imageCard, dotX, dotY, 14, 14, 0x00E676FF);
+        imageCard.print({ font: font16, x: dotX + 20, y: dotY, text: 'Su An Oyunda' });
+      }
+
+      // ── D. Bottom Banner — VIP & Destekci ──────────────────────────────
+      // Bottom gold banner spans full width (~78% to ~93% height)
+      const bottomY = Math.round(tH * 0.79);
+      const bottomTextX = Math.round(tW * 0.10);
+
       const timedRolesData = await PanelAPI.getTimedRoles();
       const rolesList = timedRolesData.roles || [];
       const userVip = linkedUser ? rolesList.find((r) => r.user_id === linkedUser.id) : null;
@@ -250,33 +356,59 @@ export default {
         const totalSecsLeft = expiryTimestamp - Math.floor(Date.now() / 1000);
         const daysLeft = Math.max(0, Math.ceil(totalSecsLeft / 86400));
 
-        // Print VIP Rank Info
-        imageCard.print({ font: font32, x: 535, y: 730, text: `VIP STATUS: ${vipRoleName.toUpperCase()}` });
-        
-        // Draw beautiful golden progress bar (W: 380, H: 12)
-        // Background track (dark grey)
-        drawRect(imageCard, 535, 785, 380, 12, 0x3E3E3EFF);
-        
-        // Gold fill track
-        const barFillWidth = Math.min(380, Math.max(0, Math.round((daysLeft / 30) * 380)));
-        if (barFillWidth > 0) {
-          drawRect(imageCard, 535, 785, barFillWidth, 12, 0xD4AF37FF);
+        // VIP Title
+        imageCard.print({
+          font: font32,
+          x: bottomTextX,
+          y: bottomY + Math.round(tH * 0.01),
+          text: `VIP: ${toAscii(vipRoleName).toUpperCase()}`
+        });
+
+        // Progress bar
+        const barX = bottomTextX;
+        const barY = bottomY + Math.round(tH * 0.06);
+        const barW = Math.round(tW * 0.80);
+        const barH = 10;
+
+        drawRect(imageCard, barX, barY, barW, barH, 0x3E3E3EFF);
+        const barFill = Math.min(barW, Math.max(0, Math.round((daysLeft / 30) * barW)));
+        if (barFill > 0) {
+          drawRect(imageCard, barX, barY, barFill, barH, 0xD4AF37FF);
         }
 
-        // Days left text
-        imageCard.print({ font: font16, x: 535, y: 812, text: `Kalan VIP Suresi: ${daysLeft} Gun` });
+        // Days remaining
+        imageCard.print({
+          font: font16,
+          x: bottomTextX,
+          y: bottomY + Math.round(tH * 0.09),
+          text: `Kalan VIP Suresi: ${daysLeft} Gun`
+        });
       } else {
-        // Default guest / support info inside box
-        imageCard.print({ font: font32, x: 535, y: 725, text: 'VIP & DESTEKCI' });
-        imageCard.print({ font: font16, x: 535, y: 775, text: 'Destekci olmak ve VIP ayricaliklarindan' });
-        imageCard.print({ font: font16, x: 535, y: 805, text: 'yararlanmak icin yetkililerle gorusun!' });
+        imageCard.print({
+          font: font32,
+          x: bottomTextX,
+          y: bottomY + Math.round(tH * 0.01),
+          text: 'VIP & DESTEKCI'
+        });
+        imageCard.print({
+          font: font16,
+          x: bottomTextX,
+          y: bottomY + Math.round(tH * 0.06),
+          text: 'Destekci olmak ve VIP ayricaliklarindan'
+        });
+        imageCard.print({
+          font: font16,
+          x: bottomTextX,
+          y: bottomY + Math.round(tH * 0.09),
+          text: 'yararlanmak icin yetkililerle gorusun!'
+        });
       }
 
-      // G. Render image as Buffer and send to Discord
+      // ── E. Render final image and send to Discord ─────────────────────
+
       const imageBuffer = await imageCard.getBuffer('image/png');
       const attachment = new AttachmentBuilder(imageBuffer, { name: `${mcNick}_profile.png` });
 
-      // Send the high-fidelity composite PNG image directly
       await interaction.editReply({
         files: [attachment],
         embeds: [],
