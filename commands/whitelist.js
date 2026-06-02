@@ -83,18 +83,19 @@ async function executeKayit(interaction) {
       return await interaction.editReply({ embeds: [errorEmbed] });
     }
 
-    await PanelAPI.addWhitelist(interaction.user.id, nickname);
+    const result = await PanelAPI.addWhitelist(interaction.user.id, nickname);
+    const finalNick = result?.mcNick || nickname;
 
     const successEmbed = embeds.successEmbed(
       'Whitelist Kaydı Başarılı',
-      `**${nickname}** nick'i whitelist'e eklendi!`
+      `**${finalNick}** nick'i whitelist'e eklendi!`
     );
 
     await interaction.editReply({ embeds: [successEmbed] });
 
     logger.info('Whitelist kayıt:', {
       user: interaction.user.tag,
-      nickname,
+      nickname: finalNick,
     });
   } catch (error) {
     logger.error('Whitelist kayit error:', { error: error.message });

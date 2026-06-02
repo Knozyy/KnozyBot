@@ -62,11 +62,12 @@ async function executeEkle(message, args) {
     return await message.reply('❌ Geçersiz nick (3-16 karakter)');
   }
 
-  await PanelAPI.addWhitelist(user.id, nick);
+  const result = await PanelAPI.addWhitelist(user.id, nick);
+  const finalNick = result?.mcNick || nick;
 
   const embed = embeds.successEmbed(
     'Whitelist Eklendi',
-    `**${user.username}** → \`${nick}\` whitelist'e eklendi`
+    `**${user.username}** → \`${finalNick}\` whitelist'e eklendi`
   );
 
   await message.reply({ embeds: [embed] });
@@ -74,7 +75,7 @@ async function executeEkle(message, args) {
   logger.info('Admin whitelist ekle:', {
     user: message.author.tag,
     target: user.user.tag,
-    nick,
+    nick: finalNick,
   });
 }
 
