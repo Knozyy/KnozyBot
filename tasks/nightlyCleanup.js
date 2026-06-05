@@ -61,11 +61,22 @@ export default {
           const { hasWhitelistRequiredRole } = await import('../utils/checks.js');
           hasRole = await hasWhitelistRequiredRole(member);
         } catch (err) {
-          if (err.code === 10007) {
-            hasRole = false; // Left server
+          // Discord API hata kodları:
+          // 10007 = Unknown Member (sunucudan ayrılmış)
+          // 10013 = Unknown User (kullanıcı silinmiş/bulunamıyor)
+          // HTTP 404 = Not Found
+          const code = err.code;
+          const status = err.status || err.httpStatus;
+          const isNotFound = code === 10007 || code === 10013 
+            || code === '10007' || code === '10013'
+            || status === 404;
+          
+          if (isNotFound) {
+            hasRole = false; // Sunucudan ayrılmış veya bulunamıyor — sil
+            logger.info(`[CLEANUP] User ${entry.mcNick} (${entry.userId}) not found in guild (code: ${code}). Will be removed.`);
           } else {
-            logger.warn(`Could not check role for ${entry.mcNick}: ${err.message}`);
-            continue; // Skip this user to avoid accidental deletion
+            logger.warn(`Could not check role for ${entry.mcNick}: ${err.message} (code: ${code})`);
+            continue; // Bilinmeyen hata — güvenlik için atla
           }
         }
 
