@@ -71,11 +71,11 @@ Panelden değiştirilebilir özelleştirme:
 
 **Çözüm:**
 - `MainLayout.jsx` NAV'ına Discord Bot satırı eklendi
-- `hodo/icons.jsx` dosyasına `Chat` ikonu eklendi
+- `hoodoo/icons.jsx` dosyasına `Chat` ikonu eklendi
 
 ### 6. Dark Mode Düzeltmesi
 
-**Sorun:** HODO paneli her zaman koyu ama Tailwind `.dark` class'ı aktif değildi → DiscordPage açık renkli görünüyordu.
+**Sorun:** HooDoo paneli her zaman koyu ama Tailwind `.dark` class'ı aktif değildi → DiscordPage açık renkli görünüyordu.
 
 **Çözüm:**
 - `context/ThemeContext.jsx` → varsayılan `dark`
@@ -228,7 +228,7 @@ KnozySunucu/
         │
         ├── components/
         │   ├── layout/
-        │   │   └── MainLayout.jsx # ✅ Aktif layout (HODO theme)
+        │   │   └── MainLayout.jsx # ✅ Aktif layout (HooDoo theme)
         │   ├── Dashboard/widgets/
         │   └── CommandPalette/
         │
@@ -237,7 +237,7 @@ KnozySunucu/
         │   ├── ThemeContext.jsx   # Dark mode (varsayılan dark)
         │   └── I18nContext.jsx    # tr/en
         │
-        ├── hodo/                  # HODO design system
+        ├── hoodoo/                  # HooDoo design system
         │   ├── tokens.js          # Renk paleti (sabit dark)
         │   ├── icons.jsx          # Custom SVG ikonlar
         │   ├── primitives.jsx
@@ -410,7 +410,7 @@ pm2 logs knozy-bot
 - `presenceUpdate` her 30sn'de bir cache'den okur (5dk TTL)
 - KnozySunucu Minecraft'ı Java process olarak yönetir, RCON ayrı bir kanaldan
 - Aynı makinede çalışıyorsa `PANEL_URL=http://localhost:3001`
-- DiscordPage HODO theme değil Tailwind kullanıyor — bu yüzden `.dark` class gerekli
+- DiscordPage HooDoo theme değil Tailwind kullanıyor — bu yüzden `.dark` class gerekli
 
 ---
 
