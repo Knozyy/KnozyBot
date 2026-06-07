@@ -81,17 +81,24 @@ export const embeds = {
       .setTimestamp();
 
     if (lagGuard) {
-      const statusLabel = lagGuard.level ? lagGuard.level.toUpperCase() : 'BİLİNMİYOR';
-      const statusEmoji = lagGuard.level === 'stable' ? '🟢' : (lagGuard.level === 'warn' ? '🟡' : '🔴');
-      
+      // Stabilite seviyesi → Türkçe etiket + emoji (panel: unknown/stable/minor/warn/critical)
+      const LEVELS = {
+        stable:   { emoji: '🟢', label: 'STABİL' },
+        minor:    { emoji: '🟡', label: 'SINIRDA' },
+        warn:     { emoji: '🟠', label: 'UYARI' },
+        critical: { emoji: '🔴', label: 'KRİTİK' },
+        unknown:  { emoji: '⚪', label: 'BİLİNMİYOR' },
+      };
+      const lvl = LEVELS[lagGuard.level] || LEVELS.unknown;
+
       const tpsVal = lagGuard.tps != null ? parseFloat(lagGuard.tps).toFixed(1) : '—';
       const msptVal = lagGuard.mspt != null ? `${parseFloat(lagGuard.mspt).toFixed(1)} ms` : '—';
-      const throttledVal = lagGuard.throttledCount != null && lagGuard.leverCount != null 
-        ? `${lagGuard.throttledCount} / ${lagGuard.leverCount} kısık` 
+      const throttledVal = lagGuard.throttledCount != null && lagGuard.leverCount != null
+        ? `${lagGuard.throttledCount} / ${lagGuard.leverCount} kısık`
         : '—';
 
       embed.addFields(
-        { name: '🟢 Durum', value: `**${statusEmoji} ${statusLabel}**`, inline: true },
+        { name: '📊 Durum', value: `**${lvl.emoji} ${lvl.label}**`, inline: true },
         { name: '⚡ TPS', value: `\`${tpsVal}\` (Hedef 20.0)`, inline: true },
         { name: '⏱️ MSPT', value: `\`${msptVal}\``, inline: true },
         { name: '🎛️ Kaldıraçlar', value: `\`${throttledVal}\``, inline: true }
