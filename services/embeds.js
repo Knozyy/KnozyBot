@@ -93,16 +93,32 @@ export const embeds = {
 
       const tpsVal = lagGuard.tps != null ? parseFloat(lagGuard.tps).toFixed(1) : '—';
       const msptVal = lagGuard.mspt != null ? `${parseFloat(lagGuard.mspt).toFixed(1)} ms` : '—';
-      const throttledVal = lagGuard.throttledCount != null && lagGuard.leverCount != null
-        ? `${lagGuard.throttledCount} / ${lagGuard.leverCount} kısık`
-        : '—';
+
+      // Mini trend grafiği (sparkline) — status endpoint'inden gelen ring verisi
+      const BLOCKS = '▁▂▃▄▅▆▇█';
+      const spark = (vals, min, max) => {
+        const pts = vals.filter(v => v != null).slice(-24);
+        if (pts.length < 2) return '';
+        const span = (max - min) || 1;
+        return pts.map(v => BLOCKS[Math.max(0, Math.min(7, Math.round(((v - min) / span) * 7)))]).join('');
+      };
+      const ring = Array.isArray(lagGuard.ring) ? lagGuard.ring : [];
+      const tpsSpark = spark(ring.map(r => r.tps), 0, 20);
+      const msptPeak = Math.max(100, ...ring.map(r => r.mspt || 0));
+      const msptSpark = spark(ring.map(r => r.mspt), 0, msptPeak);
 
       embed.addFields(
         { name: '📊 Durum', value: `**${lvl.emoji} ${lvl.label}**`, inline: true },
-        { name: '⚡ TPS', value: `\`${tpsVal}\` (Hedef 20.0)`, inline: true },
-        { name: '⏱️ MSPT', value: `\`${msptVal}\``, inline: true },
-        { name: '🎛️ Kaldıraçlar', value: `\`${throttledVal}\``, inline: true }
+        { name: '⚡ TPS', value: `\`${tpsVal}\` /20`, inline: true },
+        { name: '⏱️ MSPT', value: `\`${msptVal}\``, inline: true }
       );
+      if (tpsSpark || msptSpark) {
+        embed.addFields({
+          name: '📈 Trend (son ~12 dk)',
+          value: `TPS  \`${tpsSpark || '—'}\`\nMSPT \`${msptSpark || '—'}\``,
+          inline: false,
+        });
+      }
     }
       
     if (chartUrl) {
