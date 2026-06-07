@@ -47,6 +47,9 @@ export default {
         return;
       }
 
+      // Get LagGuard/Performance metrics
+      const lagGuardStatus = await PanelAPI.getLagGuardStatus();
+
       // Get player history for chart
       const history = await PanelAPI.getPlayerHistory();
       
@@ -141,7 +144,7 @@ export default {
         }
       }
 
-      const embed = embeds.dashboardEmbed(servers, chartUrl);
+      const embed = embeds.dashboardEmbed(servers, chartUrl, lagGuardStatus);
 
       // Update or create dashboard message
       if (settings.dashboardMessageId) {

@@ -103,6 +103,16 @@ class PanelAPI {
     return response.data;
   }
 
+  async getLagGuardStatus() {
+    try {
+      const response = await this.client.get(`/api/lag-guard/status`);
+      return response.data;
+    } catch (e) {
+      logger.warn('Failed to fetch LagGuard status', { error: e.message });
+      return null;
+    }
+  }
+
   // Whitelist
   async getWhitelist() {
     const response = await this.client.get(`/api/discord/whitelist`);

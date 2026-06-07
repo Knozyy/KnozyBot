@@ -69,8 +69,7 @@ export const embeds = {
       .setTimestamp();
   },
 
-  // Dashboard embed
-  dashboardEmbed: (servers, chartUrl = null) => {
+  dashboardEmbed: (servers, chartUrl = null, lagGuard = null) => {
     const serverList = servers
       .map((s) => `• **${s.name}**: ${s.status === 'running' ? '🟢' : '🔴'} (${s.onlinePlayers}/${s.maxPlayers})`)
       .join('\n');
@@ -80,6 +79,24 @@ export const embeds = {
       .setTitle(`${EMOJIS.DASHBOARD} Dashboard`)
       .setDescription(serverList || 'Sunucu yok')
       .setTimestamp();
+
+    if (lagGuard) {
+      const statusLabel = lagGuard.level ? lagGuard.level.toUpperCase() : 'BİLİNMİYOR';
+      const statusEmoji = lagGuard.level === 'stable' ? '🟢' : (lagGuard.level === 'warn' ? '🟡' : '🔴');
+      
+      const tpsVal = lagGuard.tps != null ? parseFloat(lagGuard.tps).toFixed(1) : '—';
+      const msptVal = lagGuard.mspt != null ? `${parseFloat(lagGuard.mspt).toFixed(1)} ms` : '—';
+      const throttledVal = lagGuard.throttledCount != null && lagGuard.leverCount != null 
+        ? `${lagGuard.throttledCount} / ${lagGuard.leverCount} kısık` 
+        : '—';
+
+      embed.addFields(
+        { name: '🟢 Durum', value: `**${statusEmoji} ${statusLabel}**`, inline: true },
+        { name: '⚡ TPS', value: `\`${tpsVal}\` (Hedef 20.0)`, inline: true },
+        { name: '⏱️ MSPT', value: `\`${msptVal}\``, inline: true },
+        { name: '🎛️ Kaldıraçlar', value: `\`${throttledVal}\``, inline: true }
+      );
+    }
       
     if (chartUrl) {
       embed.setImage(chartUrl);
