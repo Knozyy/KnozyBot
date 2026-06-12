@@ -195,6 +195,16 @@ class PanelAPI {
     return response.data;
   }
 
+  async extendVipGrant(grantId, days) {
+    const response = await this.client.post(`/api/vip/grants/${grantId}/extend`, { days });
+    return response.data;
+  }
+
+  async revokeVipGrant(grantId, reason = 'paket yükseltme') {
+    const response = await this.client.post(`/api/vip/grants/${grantId}/revoke`, { reason });
+    return response.data;
+  }
+
   // Bot Settings
   async getBotSettings() {
     const response = await this.client.get(`/api/discord/bot-settings`);

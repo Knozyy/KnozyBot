@@ -2,46 +2,45 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import PanelAPI from './PanelAPI.js';
+import { logger } from '../core/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORE_FILE = path.join(__dirname, '../data/donations.json');
-const CONFIG_FILE = path.join(__dirname, '../data/donation.config.json');
 
 // Karışmaya müsait karakterler yok (0/O, 1/I/L)
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MAX_SEEN = 2000;
 const MAX_PROCESSED = 500;
+const CONFIG_CACHE_TTL = 60 * 1000;
 
 const DEFAULT_CONFIG = {
-  // Bağış mesajında aranacak kod öneki: KNZ-XXXX
+  enabled: false,
+  donateListUrl: '',
+  publicDonateUrl: '',
   codePrefix: 'KNZ',
-  // /bagis ile alınan kodun geçerlilik süresi (saat)
   claimTtlHours: 72,
-  // Kodsuz/eşleşmeyen bağışlarda admin kanalına bildirim için alt limit (₺)
   minNotifyAmount: 50,
-  // Paketler: type 'timed_role' → Discord süreli rol, 'vip' → paneldeki VIP paketi
-  packages: [
-    {
-      id: 'sunucu-uyelik',
-      label: 'Sunucu Katılım Üyeliği (30 gün)',
-      type: 'timed_role',
-      roleId: 'ROL_ID_BURAYA',
-      durationDays: 30,
-      price: 150,
-      stackable: true,
-      enabled: false,
-    },
-    {
-      id: 'vip',
-      label: 'VIP Üyelik',
-      type: 'vip',
-      vipPackageId: 1,
-      price: 250,
-      stackable: true,
-      enabled: false,
-    },
-  ],
+  incentivePercent: 0,
+  donationLogChannelId: '',
+  packages: [],
 };
+
+let configCache = null;
+let configCacheAt = 0;
+
+function normalizeConfig(raw) {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_CONFIG };
+  return {
+    ...DEFAULT_CONFIG,
+    ...raw,
+    claimTtlHours: Number(raw.claimTtlHours) > 0 ? Number(raw.claimTtlHours) : 72,
+    minNotifyAmount: Number(raw.minNotifyAmount) >= 0 ? Number(raw.minNotifyAmount) : 50,
+    incentivePercent: Number(raw.incentivePercent) > 0 ? Number(raw.incentivePercent) : 0,
+    codePrefix: String(raw.codePrefix || 'KNZ').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'KNZ',
+    packages: Array.isArray(raw.packages) ? raw.packages : [],
+  };
+}
 
 function readJson(file, fallback) {
   if (!fs.existsSync(file)) return fallback;
@@ -74,26 +73,33 @@ function generateCode(prefix, existingCodes) {
 }
 
 export const donationStore = {
-  /** Paket/sistem ayarlarını okur; dosya yoksa şablon oluşturur (paketler kapalı gelir). */
-  getConfig() {
-    if (!fs.existsSync(CONFIG_FILE)) {
-      writeJson(CONFIG_FILE, DEFAULT_CONFIG);
-      return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  /**
+   * Bağış sistemi ayarlarını panelden okur (Discord sayfası → Bağış Sistemi sekmesi,
+   * bot-settings içindeki `donation_config` anahtarı). 60sn cache'lenir;
+   * panel erişilemezse son başarılı config ile devam eder.
+   */
+  async getConfig() {
+    const now = Date.now();
+    if (configCache && now - configCacheAt < CONFIG_CACHE_TTL) return configCache;
+    try {
+      const settings = await PanelAPI.getBotSettings();
+      configCache = normalizeConfig(settings.donation_config);
+      configCacheAt = now;
+    } catch (e) {
+      logger.warn('Bağış config panelden okunamadı', { error: e.message });
+      if (!configCache) configCache = { ...DEFAULT_CONFIG };
     }
-    const cfg = readJson(CONFIG_FILE, DEFAULT_CONFIG);
-    return {
-      ...DEFAULT_CONFIG,
-      ...cfg,
-      packages: Array.isArray(cfg.packages) ? cfg.packages : [],
-    };
+    return configCache;
   },
 
-  enabledPackages() {
-    return this.getConfig().packages.filter((p) => p.enabled);
+  async enabledPackages() {
+    const cfg = await this.getConfig();
+    return cfg.enabled ? cfg.packages.filter((p) => p.enabled) : [];
   },
 
-  getPackage(id) {
-    return this.getConfig().packages.find((p) => p.id === id) || null;
+  async getPackage(id) {
+    const cfg = await this.getConfig();
+    return cfg.packages.find((p) => p.id === id) || null;
   },
 
   _load() {
@@ -135,8 +141,7 @@ export const donationStore = {
   },
 
   /** Kullanıcının bu paket için aktif claim'i varsa onu, yoksa yeni kod üretip döner. */
-  createOrGetClaim(userId, packageId) {
-    const config = this.getConfig();
+  createOrGetClaim(userId, packageId, config) {
     const store = this._load();
     const now = Date.now();
 
@@ -160,8 +165,7 @@ export const donationStore = {
   },
 
   /** Mesaj içinde claim kodu arar (KNZ-7F3K, knz 7f3k, knz7f3k hepsi kabul). */
-  findCodeInMessage(message) {
-    const config = this.getConfig();
+  findCodeInMessage(message, config) {
     const prefix = config.codePrefix.toUpperCase();
     const regex = new RegExp(`${prefix}[\\s-]?([${CODE_ALPHABET}]{4})`, 'i');
     const match = (message || '').toUpperCase().match(regex);

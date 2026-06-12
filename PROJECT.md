@@ -183,50 +183,48 @@ bağış verisi HTML içindeki `__NUXT_DATA__` JSON payload'ından okunuyor (HTM
    - `vip` paketi → paneldeki VIP grant sistemi (rol + MC komutları panel halleder)
 5. Kullanıcıya DM, log kanalına embed; fiyatın katı bağışta süre katlanır (`stackable`)
 
+### Süre uzatma / kademe yükseltme / teşvik
+
+- **Aynı paket tekrar alınırsa süre uzatılır:** süreli rolde kalan süre + yeni süre tek kayıtta
+  birleştirilir; VIP'te paneldeki grant `extend` edilir (yeni paralel grant açılmaz)
+- **VIP kademe yükseltme:** daha değerli pakete geçişte eski paketin kalan günleri
+  *günlük değer oranıyla* yeni pakete çevrilir (örn. Gold 250₺/30g → Diamond 500₺/30g:
+  kalan 20 Gold günü = +10 Diamond günü), eski grant otomatik iptal edilir
+- **Teşvik bonusu:** panelden ayarlanan % kadar ek süre (örn. %10 → 30 gün yerine 33 gün)
+- **Katlama (`stackable`):** fiyatın katı kadar destekte süre de katlanır (üst sınır 12×)
+
 ### Güvenlik / kenar durumlar
 
 - İlk çalıştırmada mevcut bağış geçmişi **baseline** alınır — geriye dönük rol dağıtılmaz
-- Görülen bağışlar `_id` ile tekilleştirilir (`data/donations.json`)
-- Kodsuz, kullanılmış kodlu, yetersiz tutarlı bağışlar log kanalına "Eşleşmeyen Bağış" düşer
-- Kod TTL: 72 saat (config), tek kullanımlık; karışan karakterler (0/O, 1/I/L) alfabede yok
+- Görülen bağışlar `_id` ile tekilleştirilir (`data/donations.json`, gitignore'da)
+- Kodsuz, kullanılmış kodlu, yetersiz tutarlı bağışlar log kanalına "Eşleşmeyen Destek" düşer
+- Kod TTL panelden ayarlanır (varsayılan 72 saat), tek kullanımlık; karışan karakterler (0/O, 1/I/L) alfabede yok
+- Üst üste 3 fetch hatasında tarama 5 tur (10 dk) durur — ByNoGame'e nazik davranış
+- **ByNoGame sözleşme notu (Madde 7.2.d):** donate ticari amaçla kullanılamaz. Sistem bu yüzden
+  "satış" değil **destekçi teşekkür avantajı** dilinde kurgulandı (komut metinleri dahil).
+  Duyurularda da "satın al/fiyat" yerine "destek ol" dili kullanılmalı.
 
-### Yapılandırma
+### Yapılandırma — tamamen panel üzerinden
 
-```bash
-# .env
-BYNO_DONATE_LIST_URL=https://donate.bynogame.com/donatelist/<uuid>   # bot okur
-BYNO_PUBLIC_DONATE_URL=https://donate.bynogame.com/<slug>            # kullanıcı bağışlar
-```
+Panel → **Discord Bot → Bağış Sistemi** sekmesi (`donation_config` olarak bot-settings'te saklanır):
 
-`data/donation.config.json` (ilk çalıştırmada şablon otomatik oluşur, paketler `enabled:false` gelir):
+- Sistem aktif/pasif, donate liste linki (bot okur), herkese açık bağış sayfası (buton hedefi)
+- Teşvik %, kod öneki, kod geçerlilik süresi, bildirim alt limiti, log kanalı
+- Paket CRUD: Süreli Rol (rol + gün + min. destek) veya VIP (panel VIP paketi + min. destek),
+  katlanabilir/aktif anahtarları
 
-```json
-{
-  "codePrefix": "KNZ",
-  "claimTtlHours": 72,
-  "minNotifyAmount": 50,
-  "packages": [
-    { "id": "sunucu-uyelik", "label": "Sunucu Katılım Üyeliği (30 gün)", "type": "timed_role",
-      "roleId": "<discord_rol_id>", "durationDays": 30, "price": 150, "stackable": true, "enabled": true },
-    { "id": "vip", "label": "VIP Üyelik", "type": "vip",
-      "vipPackageId": 1, "price": 250, "stackable": true, "enabled": true }
-  ]
-}
-```
-
-- VIP paketlerinde süreyi paneldeki VIP paketi belirler (`vipPackageId` → panel `/api/vip/packages` id'si)
-- Log kanalı: panel bot ayarlarındaki `donation_log_channel_id`, yoksa `role_log_channel_id`
-- Paket değişikliği için bot restart gerekmez (config her komutta/taramada okunur);
-  yeni slash komutun kaydı için ilk kurulumda bir restart yeterli
+Bot config'i 60sn cache ile panelden okur — paket değişikliği için restart gerekmez.
+`.env`'de ByNoGame'e dair hiçbir şey tutulmaz (public repo güvenliği).
 
 ### Dosyalar
 
 | Dosya | Görev |
 |---|---|
 | `services/BynoDonations.js` | Donate sayfası çek + `__NUXT_DATA__` parse |
-| `services/donationStore.js` | Paket config, kod üretimi, claim/seen kalıcılığı |
+| `services/donationStore.js` | Panel config okuma (cache), kod üretimi, claim/seen kalıcılığı |
 | `commands/bagis.js` | `/bagis` — paket seçimi (autocomplete) + kod + talimat |
-| `tasks/donationCheck.js` | 2dk'da bir tarama, eşleştirme, grant, bildirimler |
+| `tasks/donationCheck.js` | 2dk'da bir tarama, eşleştirme, uzatma/yükseltme/teşvik, bildirimler |
+| KnozySunucu `DiscordPage.jsx` | Bağış Sistemi sekmesi (ayarlar + paket CRUD) |
 
 ---
 
