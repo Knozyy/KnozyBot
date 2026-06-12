@@ -156,14 +156,77 @@ KnozyBot/
 
 ### KnozyBot Özellikleri
 
-- **5 Slash Komut:** `/oyuncular`, `/istatistik`, `/whitelist` (3 alt komut)
+- **Slash Komutlar:** `/oyuncular`, `/istatistik`, `/whitelist`, `/profil`, `/vip`, `/bagis`
 - **3 Prefix Komut:** `!wl`, `!gecici-rol`, `!sync`
-- **6 Background Task:** presence, dashboard, roles, cleanup, health, heartbeat
+- **7 Background Task:** presence, dashboard, roles, cleanup, health, heartbeat, donation
 - **Gece Koruma Sistemi:** Belirli saatler arası uyarı
 - **Süreli Roller:** Belirli süre sonra otomatik kaldırma
 - **Cache Sistemi:** API çağrılarını minimize eder
 - **Error Handling:** Graceful degradation
 - **Logging:** Winston (file + console)
+
+---
+
+## 💝 ByNoGame Bağış Sistemi
+
+YouTube üyeliğine alternatif: ByNoGame bağışı ile otomatik süreli rol / VIP tanımlama.
+ByNoGame'in resmi API'si yok — donate listesi sayfası server-rendered Nuxt olduğundan
+bağış verisi HTML içindeki `__NUXT_DATA__` JSON payload'ından okunuyor (HTML parse yok).
+
+### Akış
+
+1. Kullanıcı `/bagis paket:<seçim>` çalıştırır → bot kişiye özel kod üretir (örn. `KNZ-7F3K`)
+2. Kullanıcı ByNoGame bağış sayfasında tutarı girer, mesaja kodu yazar
+3. `donationCheck` task'ı 2 dakikada bir donate listesini tarar
+4. Kod + yeterli tutar eşleşince otomatik tanımlar:
+   - `timed_role` paketi → mevcut Süreli Roller sistemi (panel) + anında Discord rolü
+   - `vip` paketi → paneldeki VIP grant sistemi (rol + MC komutları panel halleder)
+5. Kullanıcıya DM, log kanalına embed; fiyatın katı bağışta süre katlanır (`stackable`)
+
+### Güvenlik / kenar durumlar
+
+- İlk çalıştırmada mevcut bağış geçmişi **baseline** alınır — geriye dönük rol dağıtılmaz
+- Görülen bağışlar `_id` ile tekilleştirilir (`data/donations.json`)
+- Kodsuz, kullanılmış kodlu, yetersiz tutarlı bağışlar log kanalına "Eşleşmeyen Bağış" düşer
+- Kod TTL: 72 saat (config), tek kullanımlık; karışan karakterler (0/O, 1/I/L) alfabede yok
+
+### Yapılandırma
+
+```bash
+# .env
+BYNO_DONATE_LIST_URL=https://donate.bynogame.com/donatelist/<uuid>   # bot okur
+BYNO_PUBLIC_DONATE_URL=https://donate.bynogame.com/<slug>            # kullanıcı bağışlar
+```
+
+`data/donation.config.json` (ilk çalıştırmada şablon otomatik oluşur, paketler `enabled:false` gelir):
+
+```json
+{
+  "codePrefix": "KNZ",
+  "claimTtlHours": 72,
+  "minNotifyAmount": 50,
+  "packages": [
+    { "id": "sunucu-uyelik", "label": "Sunucu Katılım Üyeliği (30 gün)", "type": "timed_role",
+      "roleId": "<discord_rol_id>", "durationDays": 30, "price": 150, "stackable": true, "enabled": true },
+    { "id": "vip", "label": "VIP Üyelik", "type": "vip",
+      "vipPackageId": 1, "price": 250, "stackable": true, "enabled": true }
+  ]
+}
+```
+
+- VIP paketlerinde süreyi paneldeki VIP paketi belirler (`vipPackageId` → panel `/api/vip/packages` id'si)
+- Log kanalı: panel bot ayarlarındaki `donation_log_channel_id`, yoksa `role_log_channel_id`
+- Paket değişikliği için bot restart gerekmez (config her komutta/taramada okunur);
+  yeni slash komutun kaydı için ilk kurulumda bir restart yeterli
+
+### Dosyalar
+
+| Dosya | Görev |
+|---|---|
+| `services/BynoDonations.js` | Donate sayfası çek + `__NUXT_DATA__` parse |
+| `services/donationStore.js` | Paket config, kod üretimi, claim/seen kalıcılığı |
+| `commands/bagis.js` | `/bagis` — paket seçimi (autocomplete) + kod + talimat |
+| `tasks/donationCheck.js` | 2dk'da bir tarama, eşleştirme, grant, bildirimler |
 
 ---
 

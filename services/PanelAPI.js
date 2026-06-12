@@ -174,6 +174,27 @@ class PanelAPI {
     }
   }
 
+  async getVipPackages() {
+    try {
+      const response = await this.client.get(`/api/vip/packages`);
+      return response.data.packages || [];
+    } catch (e) {
+      logger.warn('Failed to fetch VIP packages', { error: e.message });
+      return [];
+    }
+  }
+
+  async addVipGrant({ packageId, userId, mcNick = null, durationDays = null, note = '' }) {
+    const response = await this.client.post(`/api/vip/grants`, {
+      packageId,
+      userId,
+      mcNick,
+      durationDays,
+      note,
+    });
+    return response.data;
+  }
+
   // Bot Settings
   async getBotSettings() {
     const response = await this.client.get(`/api/discord/bot-settings`);

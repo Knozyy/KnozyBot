@@ -6,6 +6,8 @@ node_modules/
 logs/
 data/nightguard.json
 data/settings.cache.json
+data/donations.json
+data/donation.config.json
 .DS_Store
 .vscode/
 .idea/

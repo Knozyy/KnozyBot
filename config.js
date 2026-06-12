@@ -11,6 +11,12 @@ export const config = {
     url: process.env.PANEL_URL || 'http://localhost:3001',
     apiToken: process.env.PANEL_API_TOKEN,
   },
+  byno: {
+    // Botun bağışları okuduğu liste sayfası (donatelist/<uuid>)
+    donateListUrl: process.env.BYNO_DONATE_LIST_URL || '',
+    // Kullanıcılara gösterilen bağış sayfası (donate.bynogame.com/<slug>)
+    publicDonateUrl: process.env.BYNO_PUBLIC_DONATE_URL || '',
+  },
   environment: process.env.NODE_ENV || 'development',
   logging: {
     level: process.env.LOG_LEVEL || 'info',
