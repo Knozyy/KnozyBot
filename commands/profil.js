@@ -380,31 +380,34 @@ export default {
       const VX = VIP_PANEL.x + 18;
       const VY = VIP_PANEL.y;
 
-      const timedRolesData = await PanelAPI.getTimedRoles();
-      const rolesList = timedRolesData.roles || [];
-      const userVip = linkedUser ? rolesList.find((r) => r.user_id === linkedUser.id) : null;
-
+      // VIP bilgisi — yeni VIP sisteminden (panel /api/vip), eski süreli-roller değil
       let vipRoleName = null;
-      let expiryTimestamp = null;
+      let expiryTimestamp = null; // null + vipRoleName dolu = süresiz
 
-      if (userVip && guild) {
-        try {
-          const role = await guild.roles.fetch(userVip.role_id);
-          if (role) { vipRoleName = role.name; expiryTimestamp = userVip.expiry_timestamp; }
-        } catch { /* ignore */ }
+      if (linkedUser) {
+        const vipGrants = await PanelAPI.getVipByUser(linkedUser.id);
+        if (vipGrants.length) {
+          vipRoleName = vipGrants[0].package_name;
+          expiryTimestamp = vipGrants[0].expires_at; // null olabilir (süresiz)
+        }
       }
 
       if (vipRoleName) {
-        const daysLeft = Math.max(0, Math.ceil((expiryTimestamp - Math.floor(Date.now() / 1000)) / 86400));
         card.print({ font: font32, x: VX, y: VY + 6, text: `VIP: ${toAscii(vipRoleName).toUpperCase()}` });
 
-        // Gold progress bar
         const barY = VY + 44;
         const barW = VIP_PANEL.w - 36;
-        drawRect(card, VX, barY, barW, 8, 0x2A2040FF);
-        const fill = Math.min(barW, Math.max(0, Math.round((daysLeft / 30) * barW)));
-        if (fill > 0) drawRect(card, VX, barY, fill, 8, COLORS.borderGold);
-        card.print({ font: font16, x: VX + barW - 130, y: barY - 2, text: `${daysLeft} Gun Kaldi` });
+        if (expiryTimestamp == null) {
+          // Süresiz üyelik — dolu altın bar
+          drawRect(card, VX, barY, barW, 8, COLORS.borderGold);
+          card.print({ font: font16, x: VX + barW - 130, y: barY - 2, text: 'Suresiz Uyelik' });
+        } else {
+          const daysLeft = Math.max(0, Math.ceil((expiryTimestamp - Math.floor(Date.now() / 1000)) / 86400));
+          drawRect(card, VX, barY, barW, 8, 0x2A2040FF);
+          const fill = Math.min(barW, Math.max(0, Math.round((daysLeft / 30) * barW)));
+          if (fill > 0) drawRect(card, VX, barY, fill, 8, COLORS.borderGold);
+          card.print({ font: font16, x: VX + barW - 130, y: barY - 2, text: `${daysLeft} Gun Kaldi` });
+        }
       } else {
         card.print({ font: font32, x: VX, y: VY + 6, text: 'VIP & DESTEKCI' });
         card.print({ font: font16, x: VX, y: VY + 44, text: 'VIP ayricaliklarindan yararlanmak icin yetkililerle gorusun!' });

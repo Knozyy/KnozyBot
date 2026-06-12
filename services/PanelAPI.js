@@ -163,6 +163,17 @@ class PanelAPI {
     return response.data;
   }
 
+  // VIP Sistemi
+  async getVipByUser(userId) {
+    try {
+      const response = await this.client.get(`/api/vip/by-user/${encodeURIComponent(userId)}`);
+      return response.data.grants || [];
+    } catch (e) {
+      logger.warn('Failed to fetch VIP grants', { error: e.message });
+      return [];
+    }
+  }
+
   // Bot Settings
   async getBotSettings() {
     const response = await this.client.get(`/api/discord/bot-settings`);
