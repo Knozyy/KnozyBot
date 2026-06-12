@@ -37,7 +37,7 @@ class PanelAPI {
     return {
       status: data.status || 'stopped',
       onlinePlayers: data.playerCount || data.players?.length || 0,
-      maxPlayers: data.maxPlayers || 20,
+      maxPlayers: data.maxPlayers != null ? Number(data.maxPlayers) : 20,
       name: data.name || `Sunucu #${serverId || 1}`,
       players: data.players || [],
       uptime: data.uptime || 0,
