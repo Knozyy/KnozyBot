@@ -14,13 +14,13 @@ const STORE_FILE = path.join(__dirname, '../data/donations.json');
 // (TTL içinde) bir rol/VIP talebi olduğunu anlar.
 // Havuzlar ASCII tutulur; gelen mesaj Türkçe karakterli olsa da normalize edilir.
 const GREETINGS = [
-  'selam', 'naber', 'merhaba', 'nasilsin', 'gunaydin', 'hey', 'slm',
-  'eyvallah', 'helal', 'kolaygelsin', 'hayirli', 'selamlar', 'oha', 'iyaksamlar',
+  'selam', 'naber', 'merhaba', 'merhabalar', 'nasilsin', 'naptin', 'gunaydin',
+  'hey', 'slm', 'mrb', 'sa', 'eyvallah', 'helal', 'kolaygelsin', 'hayirli',
+  'selamlar', 'iyiaksamlar',
 ];
 const ADDRESSES = [
-  'hocam', 'reis', 'kral', 'kanka', 'abi', 'dostum', 'kaptan', 'usta',
-  'patron', 'baskan', 'kardes', 'moruk', 'lider', 'sampiyon', 'kahraman',
-  'efsane', 'gardas', 'canim', 'birader', 'yigit',
+  'hocam', 'reis', 'kral', 'kanka', 'kankam', 'abi', 'aga', 'dostum', 'kaptan',
+  'usta', 'patron', 'kardes', 'kardesim', 'hemserim', 'gardas', 'canim', 'birader',
 ];
 // Mesajda markadan sonra yakalanacak kelime uzunluk aralığı (tolerans)
 const WORD_MATCH = '{2,14}';
