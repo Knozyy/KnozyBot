@@ -4,6 +4,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } from 'discord.js';
 import { donationStore } from '../services/donationStore.js';
 import { COLORS } from '../utils/constants.js';
@@ -34,7 +35,8 @@ export default {
   },
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    // Yalnızca komutu kullanan görür (bağış kodu kişiye özel)
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const cfg = await donationStore.getConfig();
     if (!cfg.enabled || !cfg.donateListUrl || !cfg.publicDonateUrl) {
