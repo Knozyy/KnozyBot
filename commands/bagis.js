@@ -64,7 +64,7 @@ export default {
     const steps = [
       `1️⃣ Aşağıdaki **Destek Ol** butonuna tıkla`,
       `2️⃣ En az **${pkg.price}₺** destek gönder`,
-      `3️⃣ Bağış mesajına şu kelimeleri ekle: **${naturalCode}**`,
+      `3️⃣ Bağış mesajına şu ifadeyi **aynen** ekle: **${naturalCode}**`,
       `4️⃣ Bot desteğini otomatik algılar ve avantajını tanımlar (genelde 2-3 dk içinde)`,
     ];
 
@@ -79,7 +79,7 @@ export default {
       .addFields(
         { name: '📦 Avantaj', value: pkg.label, inline: true },
         { name: '💰 Destek', value: `en az **${pkg.price}₺**`, inline: true },
-        { name: '✍️ Mesaja Eklenecek Kelimeler', value: `\`\`\`${naturalCode}\`\`\``, inline: false },
+        { name: '✍️ Mesaja Eklenecek İfade', value: `\`\`\`${naturalCode}\`\`\``, inline: false },
         {
           name: '💬 Örnek mesaj',
           value: `*"${naturalCode}, yayınların harika 💜"*`,
@@ -92,7 +92,7 @@ export default {
         }
       )
       .setFooter({
-        text: 'Bağışlar gönüllü destektir; avantajlar teşekkür amaçlıdır. Kelimeleri istediğin cümlenin içine yazabilirsin, yeter ki mesajda bir arada bulunsunlar.',
+        text: 'Bağışlar gönüllü destektir; avantajlar teşekkür amaçlıdır. İfadeyi istediğin cümlenin içine yazabilirsin, yeter ki kelimeler aynı sırayla bir arada bulunsun.',
       })
       .setTimestamp();
 

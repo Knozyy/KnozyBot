@@ -198,7 +198,12 @@ bağış verisi HTML içindeki `__NUXT_DATA__` JSON payload'ından okunuyor (HTM
 - İlk çalıştırmada mevcut bağış geçmişi **baseline** alınır — geriye dönük rol dağıtılmaz
 - Görülen bağışlar `_id` ile tekilleştirilir (`data/donations.json`, gitignore'da)
 - Kodsuz, kullanılmış kodlu, yetersiz tutarlı bağışlar log kanalına "Eşleşmeyen Destek" düşer
-- Kod TTL panelden ayarlanır (varsayılan 72 saat), tek kullanımlık; karışan karakterler (0/O, 1/I/L) alfabede yok
+- **Kod = gündelik Türkçe ifade:** `KNZ-7F3K` gibi değil, marka + selamlama + hitap
+  (örn. `hoodoo selam hocam`, `hoodoo naber reis`). Donate listesine bakana sıradan bir
+  selam gibi görünür → satın alma kodu pattern'i belli olmaz (ByNoGame 7.2.d riski ↓).
+  Mesaj normalize edilir (Türkçe→ASCII, büyük/küçük harf, cümle içi/fazla kelime tolere);
+  marka adını anan normal bağışlar gerçek koda denk gelmezse sessizce geçer (admin'i boğmaz)
+- Kod TTL panelden ayarlanır (varsayılan 72 saat), tek kullanımlık
 - Üst üste 3 fetch hatasında tarama 5 tur (10 dk) durur — ByNoGame'e nazik davranış
 - **ByNoGame sözleşme notu (Madde 7.2.d):** donate ticari amaçla kullanılamaz. Sistem bu yüzden
   "satış" değil **destekçi teşekkür avantajı** dilinde kurgulandı (komut metinleri dahil).

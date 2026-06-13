@@ -8,15 +8,22 @@ import { logger } from '../core/logger.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORE_FILE = path.join(__dirname, '../data/donations.json');
 
-// Kod, "satın alma kodu" gibi durmasın diye rastgele harf-rakam yerine
-// telaffuz edilebilir bir kelime üretiyoruz (CVCVCV — sessiz/sesli dönüşümlü).
-// Marka öneki + bu kelime doğal bir selam gibi durur: "hoodoo kavemi".
-// Q/W/X yok (Türkçe doğallık), kelime hep 6 harf.
-const CONSONANTS = 'BCDFGHJKLMNPRSTVYZ';
-const VOWELS = 'AEIOU';
-const WORD_LEN = 6;
+// Kod, "satın alma kodu" gibi durmasın diye gerçek gündelik bir Türkçe ifadeden
+// oluşur: marka + selamlama + hitap → "hoodoo selam hocam", "hoodoo naber reis".
+// Donate listesine bakan biri sıradan bir selam sanır; bot ise bu ifadenin
+// (TTL içinde) bir rol/VIP talebi olduğunu anlar.
+// Havuzlar ASCII tutulur; gelen mesaj Türkçe karakterli olsa da normalize edilir.
+const GREETINGS = [
+  'selam', 'naber', 'merhaba', 'nasilsin', 'gunaydin', 'hey', 'slm',
+  'eyvallah', 'helal', 'kolaygelsin', 'hayirli', 'selamlar', 'oha', 'iyaksamlar',
+];
+const ADDRESSES = [
+  'hocam', 'reis', 'kral', 'kanka', 'abi', 'dostum', 'kaptan', 'usta',
+  'patron', 'baskan', 'kardes', 'moruk', 'lider', 'sampiyon', 'kahraman',
+  'efsane', 'gardas', 'canim', 'birader', 'yigit',
+];
 // Mesajda markadan sonra yakalanacak kelime uzunluk aralığı (tolerans)
-const WORD_MATCH = '{4,8}';
+const WORD_MATCH = '{2,14}';
 const MAX_SEEN = 2000;
 const MAX_PROCESSED = 500;
 const CONFIG_CACHE_TTL = 60 * 1000;
@@ -68,21 +75,29 @@ function emptyStore() {
   return { baselined: false, seen: {}, claims: [], processed: [] };
 }
 
-// Telaffuz edilebilir sözde-kelime: ünsüz/ünlü dönüşümlü (kavemi, tubaru, ...)
-function makeWord() {
-  const bytes = crypto.randomBytes(WORD_LEN);
-  let w = '';
-  for (let i = 0; i < WORD_LEN; i++) {
-    const set = i % 2 === 0 ? CONSONANTS : VOWELS;
-    w += set[bytes[i] % set.length];
-  }
-  return w;
+// Türkçe karakterleri ASCII'ye indir, büyük harf, alfanümerik dışını boşluğa çevir.
+// Hem kod üretiminde hem mesaj eşleştirmede aynı normalizasyon → "nasılsın" = "NASILSIN".
+function normalizeText(s) {
+  return String(s || '')
+    .replace(/[ıİ]/g, 'i')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[çÇ]/g, 'c')
+    .replace(/[öÖ]/g, 'o')
+    .replace(/[üÜ]/g, 'u')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
 }
 
-// Kanonik kod: "PREFIX-WORD" (büyük harf). Kullanıcıya doğal "prefix word" gösterilir.
+function pick(arr) {
+  return arr[crypto.randomBytes(1)[0] % arr.length];
+}
+
+// Kanonik kod: "PREFIX-SELAM-HOCAM". Kullanıcıya doğal "hoodoo selam hocam" gösterilir.
 function generateCode(prefix, existingCodes) {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const code = `${prefix}-${makeWord()}`;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const code = `${prefix}-${pick(GREETINGS)}-${pick(ADDRESSES)}`.toUpperCase();
     if (!existingCodes.has(code)) return code;
   }
   throw new Error('Benzersiz kod üretilemedi');
@@ -181,26 +196,28 @@ export const donationStore = {
   },
 
   /**
-   * Mesaj içindeki olası kod adaylarını döndürür (kanonik "PREFIX-WORD" biçiminde).
-   * "hoodoo kavemi", "hoodoo-kavemi", "...selam hoodoo kavemi hocam..." hepsi yakalanır.
-   * Marka (hoodoo) çok geçen bir kelime olabileceğinden tek bir eşleşmeye değil,
-   * mesajdaki tüm "PREFIX <kelime>" adaylarına bakarız; çağıran taraf bunları
-   * claim'lerle eşleştirir.
+   * Mesaj içindeki olası kod adaylarını döndürür (kanonik "PREFIX-W1-W2" biçiminde).
+   * Marka + iki kelimelik gündelik ifadeyi yakalar: "hoodoo selam hocam",
+   * "...slm hoodoo naber reis nasilsin..." gibi. Türkçe karakter, büyük/küçük
+   * harf ve fazladan kelimeler tolere edilir. Marka çok geçen bir kelime
+   * olabileceğinden tüm "PREFIX <kelime> <kelime>" adaylarına bakarız; çağıran
+   * taraf bunları claim'lerle eşleştirir.
    */
   findCodesInMessage(message, config) {
-    const prefix = config.codePrefix.toUpperCase();
-    const regex = new RegExp(`${prefix}[\\s-]?([A-Z]${WORD_MATCH})`, 'g');
-    const text = (message || '').toUpperCase();
+    const prefix = normalizeText(config.codePrefix);
+    if (!prefix) return [];
+    const regex = new RegExp(`${prefix} ([A-Z0-9]${WORD_MATCH}) ([A-Z0-9]${WORD_MATCH})`, 'g');
+    const text = normalizeText(message);
     const found = new Set();
     for (const m of text.matchAll(regex)) {
-      found.add(`${prefix}-${m[1]}`);
+      found.add(`${prefix}-${m[1]}-${m[2]}`);
     }
     return [...found];
   },
 
-  /** Kanonik kodu ("HOODOO-KAVEMI") kullanıcıya gösterilecek doğal biçime çevirir ("hoodoo kavemi"). */
+  /** Kanonik kodu ("HOODOO-SELAM-HOCAM") kullanıcıya gösterilecek doğal biçime çevirir ("hoodoo selam hocam"). */
   codeToNatural(code) {
-    return String(code || '').toLowerCase().replace('-', ' ');
+    return String(code || '').toLowerCase().replace(/-/g, ' ');
   },
 
   findActiveClaimByCode(code) {
