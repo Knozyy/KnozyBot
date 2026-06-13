@@ -54,6 +54,8 @@ export default {
 
     const { claim, isNew } = donationStore.createOrGetClaim(interaction.user.id, pkg.id, cfg);
 
+    const naturalCode = donationStore.codeToNatural(claim.code); // "hoodoo kavemi"
+
     const incentiveNote =
       cfg.incentivePercent > 0
         ? `\n🎁 ByNoGame destekçilerine **+%${cfg.incentivePercent} süre bonusu** uygulanır!`
@@ -62,30 +64,35 @@ export default {
     const steps = [
       `1️⃣ Aşağıdaki **Destek Ol** butonuna tıkla`,
       `2️⃣ En az **${pkg.price}₺** destek gönder`,
-      `3️⃣ Bağış mesajına şu kodu yaz: \`${claim.code}\``,
-      `4️⃣ Bot desteğini otomatik algılayıp avantajını tanımlar (genelde 2-3 dk içinde)`,
+      `3️⃣ Bağış mesajına şu kelimeleri ekle: **${naturalCode}**`,
+      `4️⃣ Bot desteğini otomatik algılar ve avantajını tanımlar (genelde 2-3 dk içinde)`,
     ];
 
     const embed = new EmbedBuilder()
       .setColor(COLORS.PRIMARY)
       .setTitle('💜 Destekçi Avantajları')
       .setDescription(
-        (isNew ? '' : 'ℹ️ Bu paket için zaten aktif bir kodun vardı, aynı kod tekrar gösteriliyor.\n\n') +
+        (isNew ? '' : 'ℹ️ Bu paket için zaten aktif bir kelime grubun vardı, aynısı tekrar gösteriliyor.\n\n') +
           steps.join('\n') +
           incentiveNote
       )
       .addFields(
         { name: '📦 Avantaj', value: pkg.label, inline: true },
         { name: '💰 Destek', value: `en az **${pkg.price}₺**`, inline: true },
-        { name: '🔑 Destek Kodun', value: `\`\`\`${claim.code}\`\`\``, inline: false },
+        { name: '✍️ Mesaja Eklenecek Kelimeler', value: `\`\`\`${naturalCode}\`\`\``, inline: false },
         {
-          name: '⏳ Kod Geçerliliği',
+          name: '💬 Örnek mesaj',
+          value: `*"${naturalCode}, yayınların harika 💜"*`,
+          inline: false,
+        },
+        {
+          name: '⏳ Geçerlilik',
           value: `<t:${Math.floor(claim.expiresAt / 1000)}:R> sona erer`,
           inline: true,
         }
       )
       .setFooter({
-        text: 'Bağışlar gönüllü destektir; avantajlar teşekkür amaçlıdır. Kod bağış mesajında yer almazsa eşleştirme yapılamaz.',
+        text: 'Bağışlar gönüllü destektir; avantajlar teşekkür amaçlıdır. Kelimeleri istediğin cümlenin içine yazabilirsin, yeter ki mesajda bir arada bulunsunlar.',
       })
       .setTimestamp();
 

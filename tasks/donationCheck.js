@@ -203,7 +203,7 @@ async function notifySuccess(bot, logChannel, claim, pkg, donation, result, cfg)
         { name: 'Destek', value: `${donation.amount}₺`, inline: true },
         { name: 'Avantaj', value: `${pkg.label}\n${describeGrant(result)}`, inline: false },
         { name: 'ByNoGame Nick', value: donation.nickName, inline: true },
-        { name: 'Kod', value: `\`${claim.code}\``, inline: true }
+        { name: 'Kod', value: `\`${donationStore.codeToNatural(claim.code)}\``, inline: true }
       )
       .setTimestamp();
     if (result.conversionNotes?.length) {
@@ -292,25 +292,36 @@ export default {
         id: donation.id,
       });
 
-      const code = donationStore.findCodeInMessage(donation.message, cfg);
+      // Mesajdaki tüm "hoodoo <kelime>" adaylarını topla, aktif claim'le eşleştir
+      const candidates = donationStore.findCodesInMessage(donation.message, cfg);
 
-      if (!code) {
-        if (donation.amount >= cfg.minNotifyAmount) {
-          await notifyUnmatched(logChannel, donation, 'Bağış mesajında kod bulunamadı.');
+      let claim = null;
+      let code = null;
+      for (const cand of candidates) {
+        const active = donationStore.findActiveClaimByCode(cand);
+        if (active) {
+          claim = active;
+          code = cand;
+          break;
         }
-        continue;
       }
 
-      const claim = donationStore.findActiveClaimByCode(code);
       if (!claim) {
-        const oldClaim = donationStore.findAnyClaimByCode(code);
-        const reason =
-          oldClaim?.status === 'completed'
-            ? `\`${code}\` kodu daha önce kullanılmış.`
-            : oldClaim?.status === 'expired'
-              ? `\`${code}\` kodunun süresi dolmuş (kullanıcı: <@${oldClaim.userId}>).`
-              : `\`${code}\` koduna ait kayıt bulunamadı.`;
-        await notifyUnmatched(logChannel, donation, reason);
+        // Aktif claim yok. Adaylardan biri kullanılmış/süresi dolmuş gerçek bir kod mu?
+        const usedCode = candidates.find((c) => donationStore.findAnyClaimByCode(c));
+        if (usedCode) {
+          const oldClaim = donationStore.findAnyClaimByCode(usedCode);
+          const reason =
+            oldClaim.status === 'completed'
+              ? `\`${donationStore.codeToNatural(usedCode)}\` kodu daha önce kullanılmış.`
+              : oldClaim.status === 'expired'
+                ? `\`${donationStore.codeToNatural(usedCode)}\` kodunun süresi dolmuş (kullanıcı: <@${oldClaim.userId}>).`
+                : `\`${donationStore.codeToNatural(usedCode)}\` koduna ait kayıt bulunamadı.`;
+          await notifyUnmatched(logChannel, donation, reason);
+        } else if (donation.amount >= cfg.minNotifyAmount) {
+          // Hiçbir aday gerçek koda denk gelmedi → normal bağış muamelesi
+          await notifyUnmatched(logChannel, donation, 'Bağış mesajında geçerli bir üyelik kodu yok (normal bağış olabilir).');
+        }
         continue;
       }
 
@@ -319,7 +330,7 @@ export default {
         await notifyUnmatched(
           logChannel,
           donation,
-          `\`${code}\` kodu geçerli ama paketi (${claim.packageId}) artık aktif değil.`
+          `\`${donationStore.codeToNatural(code)}\` kodu geçerli ama paketi (${claim.packageId}) artık aktif değil.`
         );
         continue;
       }
@@ -328,7 +339,7 @@ export default {
         await notifyUnmatched(
           logChannel,
           donation,
-          `\`${code}\` kodu <@${claim.userId}> kullanıcısına ait ama tutar yetersiz ` +
+          `\`${donationStore.codeToNatural(code)}\` kodu <@${claim.userId}> kullanıcısına ait ama tutar yetersiz ` +
             `(${donation.amount}₺ < ${pkg.price}₺). Kod aktif kalmaya devam ediyor.`
         );
         try {
@@ -360,7 +371,7 @@ export default {
         await notifyUnmatched(
           logChannel,
           donation,
-          `\`${code}\` kodu eşleşti (<@${claim.userId}>, paket: ${pkg.label}) ama tanımlama sırasında ` +
+          `\`${donationStore.codeToNatural(code)}\` kodu eşleşti (<@${claim.userId}>, paket: ${pkg.label}) ama tanımlama sırasında ` +
             `hata oluştu: ${error.message}\nManuel tanımlama gerekebilir.`
         );
       }

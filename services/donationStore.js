@@ -8,8 +8,15 @@ import { logger } from '../core/logger.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORE_FILE = path.join(__dirname, '../data/donations.json');
 
-// Karışmaya müsait karakterler yok (0/O, 1/I/L)
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+// Kod, "satın alma kodu" gibi durmasın diye rastgele harf-rakam yerine
+// telaffuz edilebilir bir kelime üretiyoruz (CVCVCV — sessiz/sesli dönüşümlü).
+// Marka öneki + bu kelime doğal bir selam gibi durur: "hoodoo kavemi".
+// Q/W/X yok (Türkçe doğallık), kelime hep 6 harf.
+const CONSONANTS = 'BCDFGHJKLMNPRSTVYZ';
+const VOWELS = 'AEIOU';
+const WORD_LEN = 6;
+// Mesajda markadan sonra yakalanacak kelime uzunluk aralığı (tolerans)
+const WORD_MATCH = '{4,8}';
 const MAX_SEEN = 2000;
 const MAX_PROCESSED = 500;
 const CONFIG_CACHE_TTL = 60 * 1000;
@@ -18,7 +25,7 @@ const DEFAULT_CONFIG = {
   enabled: false,
   donateListUrl: '',
   publicDonateUrl: '',
-  codePrefix: 'KNZ',
+  codePrefix: 'HOODOO',
   claimTtlHours: 72,
   minNotifyAmount: 50,
   incentivePercent: 0,
@@ -37,7 +44,7 @@ function normalizeConfig(raw) {
     claimTtlHours: Number(raw.claimTtlHours) > 0 ? Number(raw.claimTtlHours) : 72,
     minNotifyAmount: Number(raw.minNotifyAmount) >= 0 ? Number(raw.minNotifyAmount) : 50,
     incentivePercent: Number(raw.incentivePercent) > 0 ? Number(raw.incentivePercent) : 0,
-    codePrefix: String(raw.codePrefix || 'KNZ').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'KNZ',
+    codePrefix: String(raw.codePrefix || 'HOODOO').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12) || 'HOODOO',
     packages: Array.isArray(raw.packages) ? raw.packages : [],
   };
 }
@@ -61,12 +68,21 @@ function emptyStore() {
   return { baselined: false, seen: {}, claims: [], processed: [] };
 }
 
+// Telaffuz edilebilir sözde-kelime: ünsüz/ünlü dönüşümlü (kavemi, tubaru, ...)
+function makeWord() {
+  const bytes = crypto.randomBytes(WORD_LEN);
+  let w = '';
+  for (let i = 0; i < WORD_LEN; i++) {
+    const set = i % 2 === 0 ? CONSONANTS : VOWELS;
+    w += set[bytes[i] % set.length];
+  }
+  return w;
+}
+
+// Kanonik kod: "PREFIX-WORD" (büyük harf). Kullanıcıya doğal "prefix word" gösterilir.
 function generateCode(prefix, existingCodes) {
   for (let attempt = 0; attempt < 50; attempt++) {
-    let suffix = '';
-    const bytes = crypto.randomBytes(4);
-    for (let i = 0; i < 4; i++) suffix += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
-    const code = `${prefix}-${suffix}`;
+    const code = `${prefix}-${makeWord()}`;
     if (!existingCodes.has(code)) return code;
   }
   throw new Error('Benzersiz kod üretilemedi');
@@ -164,12 +180,27 @@ export const donationStore = {
     return { claim, isNew: true };
   },
 
-  /** Mesaj içinde claim kodu arar (KNZ-7F3K, knz 7f3k, knz7f3k hepsi kabul). */
-  findCodeInMessage(message, config) {
+  /**
+   * Mesaj içindeki olası kod adaylarını döndürür (kanonik "PREFIX-WORD" biçiminde).
+   * "hoodoo kavemi", "hoodoo-kavemi", "...selam hoodoo kavemi hocam..." hepsi yakalanır.
+   * Marka (hoodoo) çok geçen bir kelime olabileceğinden tek bir eşleşmeye değil,
+   * mesajdaki tüm "PREFIX <kelime>" adaylarına bakarız; çağıran taraf bunları
+   * claim'lerle eşleştirir.
+   */
+  findCodesInMessage(message, config) {
     const prefix = config.codePrefix.toUpperCase();
-    const regex = new RegExp(`${prefix}[\\s-]?([${CODE_ALPHABET}]{4})`, 'i');
-    const match = (message || '').toUpperCase().match(regex);
-    return match ? `${prefix}-${match[1]}` : null;
+    const regex = new RegExp(`${prefix}[\\s-]?([A-Z]${WORD_MATCH})`, 'g');
+    const text = (message || '').toUpperCase();
+    const found = new Set();
+    for (const m of text.matchAll(regex)) {
+      found.add(`${prefix}-${m[1]}`);
+    }
+    return [...found];
+  },
+
+  /** Kanonik kodu ("HOODOO-KAVEMI") kullanıcıya gösterilecek doğal biçime çevirir ("hoodoo kavemi"). */
+  codeToNatural(code) {
+    return String(code || '').toLowerCase().replace('-', ' ');
   },
 
   findActiveClaimByCode(code) {
