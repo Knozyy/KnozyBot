@@ -34,10 +34,13 @@
 - [x] `/whitelist kayit <nick>` - Whitelist kayıt
 - [x] `/whitelist bilgi [@user]` - Whitelist durumu
 - [x] `/whitelist listele` - Sayfalandırılmış liste
+- [x] `/profil [@user]` - Oyuncu profil kartı (PNG)
+- [x] `/vip [@user]` - VIP üyelik durumu
+- [x] `/bagis <paket>` - ByNoGame bağışıyla otomatik rol/VIP (panel'den yapılandırılır)
 - [x] components/WhitelistPaginator.js
 - [x] Autocomplete handler
 
-**Komut Sayısı:** 5 ana komut
+**Komut Sayısı:** 8 ana komut
 
 ### ✅ Faz 3: Prefix Komutları (Tamamlandı)
 - [x] `!wl ekle|sil|sync-mc|rol-kontrol|liste` - Whitelist yönetimi

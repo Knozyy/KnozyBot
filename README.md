@@ -62,6 +62,9 @@ KnozyBot/
 - `/whitelist kayit <nick>` - Register for whitelist
 - `/whitelist bilgi [@user]` - Check whitelist status
 - `/whitelist listele` - View full whitelist
+- `/profil [@user]` - Render player profile card
+- `/vip [@user]` - Show VIP membership status
+- `/bagis <paket>` - Support via ByNoGame donation, get auto-assigned role/VIP (config on panel)
 
 ### Prefix Commands (Admin)
 - `!wl ekle|sil|sync-mc|rol-kontrol|liste` - Whitelist management
