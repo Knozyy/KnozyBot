@@ -12,5 +12,4 @@ data/donation.config.json
 .vscode/
 .idea/
 player_history.json
-p l a y e r _ h i s t o r y . j s o n  
- 
+data/cleanup_last_message.json

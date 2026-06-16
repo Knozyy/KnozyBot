@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HISTORY_FILE = path.join(__dirname, '../data/cleanup_history.json');
 const LASTRUN_FILE = path.join(__dirname, '../data/cleanup_last_run.json');
+const LASTMSG_FILE = path.join(__dirname, '../data/cleanup_last_message.json');
 
 export const cleanupService = {
   getHistory() {
@@ -36,6 +37,22 @@ export const cleanupService = {
     const dir = path.dirname(LASTRUN_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(LASTRUN_FILE, JSON.stringify({ lastRun: dateStr }), 'utf8');
+  },
+
+  // Son gönderilen gece raporu mesajı (bir sonraki gece eskiyi silmek için)
+  getLastMessage() {
+    if (!fs.existsSync(LASTMSG_FILE)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(LASTMSG_FILE, 'utf8')) || null;
+    } catch {
+      return null;
+    }
+  },
+
+  saveLastMessage(channelId, messageId) {
+    const dir = path.dirname(LASTMSG_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(LASTMSG_FILE, JSON.stringify({ channelId, messageId }), 'utf8');
   },
 
   addReport(removedCount, removedUsers, dateStr) {

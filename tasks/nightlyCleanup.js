@@ -122,8 +122,17 @@ export default {
             const embed = cleanupService.buildEmbed(history[0], 0, history.length);
             const buttons = cleanupService.buildButtons(0, history.length);
             
-            await channel.send({ embeds: [embed], components: [buttons] });
+            const sent = await channel.send({ embeds: [embed], components: [buttons] });
             logger.info('Nightly cleanup report embed sent successfully.');
+
+            // Yeni rapor gönderildi; bir önceki gece mesajını sil (bildirim kalsın,
+            // eski raporlar kanalda birikmesin). Silme başarısız olsa bile yeni mesaj durur.
+            const prev = cleanupService.getLastMessage();
+            if (prev && prev.messageId && prev.channelId === logChannelId) {
+              const old = await channel.messages.fetch(prev.messageId).catch(() => null);
+              if (old) await old.delete().catch(() => null);
+            }
+            cleanupService.saveLastMessage(logChannelId, sent.id);
           } else {
             logger.warn(`Log channel ${logChannelId} could not be found in the guild.`);
           }
