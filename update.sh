@@ -1,6 +1,5 @@
 #!/bin/bash
 # KnozyBot - Güncelleme (git pull + npm install + bağımlılık kontrolü + restart)
-set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
