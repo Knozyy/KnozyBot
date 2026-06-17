@@ -259,13 +259,15 @@ export default {
       consecutiveFailures = 0;
     } catch (error) {
       consecutiveFailures++;
-      logger.warn('ByNoGame bağış listesi çekilemedi:', {
-        error: error.message,
-        consecutiveFailures,
-      });
+      // Gerçek sebebi (HTTP kodu / network hatası) tek satıra göm — Winston meta
+      // objesini terminale yansıtmadığından eskiden sadece "çekilemedi" görünüyordu.
+      const status = error.response?.status;
+      const code = error.code; // ECONNREFUSED, ETIMEDOUT, ENOTFOUND vb.
+      const detail = [status && `HTTP ${status}`, code, error.message].filter(Boolean).join(' · ');
+      logger.warn(`ByNoGame bağış listesi çekilemedi (${consecutiveFailures}. hata): ${detail}`);
       if (consecutiveFailures >= FAIL_THRESHOLD) {
         cooldownRemaining = COOLDOWN_CYCLES;
-        logger.warn(`Bağış taraması ${COOLDOWN_CYCLES} tur durduruldu (üst üste hata)`);
+        logger.warn(`Bağış taraması ${COOLDOWN_CYCLES} tur (${COOLDOWN_CYCLES * 2} dk) durduruldu — üst üste hata. URL ve sunucu erişimini kontrol edin.`);
       }
       return;
     }
