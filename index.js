@@ -1,17 +1,20 @@
 import KnozyBot from './core/KnozyBot.js';
 import { logger } from './core/logger.js';
 import cache from './services/Cache.js';
+import { bynoDonations } from './services/BynoDonations.js';
 
 const bot = new KnozyBot();
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down...');
+  await bynoDonations.closeBrowser();
   await bot.shutdown();
 });
 
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down...');
+  await bynoDonations.closeBrowser();
   await bot.shutdown();
 });
 

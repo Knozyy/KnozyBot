@@ -1,28 +1,94 @@
-import axios from 'axios';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../core/logger.js';
 
+puppeteer.use(StealthPlugin());
+
 /**
- * ByNoGame donate sayfası okuyucu.
+ * ByNoGame donate sayfası okuyucu — Puppeteer (headless Chrome) ile.
  *
- * ByNoGame'in resmi API'si yok; ancak donate listesi sayfası server-rendered
- * Nuxt uygulaması ve tüm bağış verisi HTML içindeki __NUXT_DATA__ script
- * bloğunda (devalue formatında) gömülü geliyor. HTML parslamak yerine bu
- * JSON payload'ı çözüyoruz — sayfa tasarımı değişse bile veri formatı
- * Nuxt'a bağlı olduğundan çok daha dayanıklı.
+ * ByNoGame Cloudflare WAF koruması kullandığından basit HTTP istekleri
+ * (axios vb.) 403 hatası alıyor. Puppeteer gerçek bir tarayıcı açarak
+ * Cloudflare challenge'ını geçer. puppeteer-extra-plugin-stealth ise
+ * otomasyon izlerini (navigator.webdriver, Chrome DevTools Protocol
+ * sızıntıları vb.) gizleyerek "bot" olarak algılanmayı önler.
  *
- * devalue formatı: tek bir düz dizi; objelerin alan değerleri dizideki
- * başka indekslere işaret eder. Örn: { nickName: 41 } → data[41] === "Knozy"
+ * Performans: Tarayıcı instance'ı cache'lenir — her 2dk'da yeni
+ * Chrome açmak yerine aynı instance tekrar kullanılır. 10dk boşta
+ * kalırsa otomatik kapanır, sonraki çağrıda yenisi açılır.
  */
 
 const REQUIRED_KEYS = ['_id', 'nickName', 'message', 'amount', 'date'];
 
+// ─── Tarayıcı instance yönetimi ─────────────────────────────────────
+let browserInstance = null;
+let browserLastUsed = 0;
+const BROWSER_IDLE_TIMEOUT = 10 * 60 * 1000; // 10 dk boşta → kapat
+let idleChecker = null;
+
+async function getBrowser() {
+  // Mevcut instance hâlâ açıksa tekrar kullan
+  if (browserInstance) {
+    try {
+      if (browserInstance.isConnected()) {
+        browserLastUsed = Date.now();
+        return browserInstance;
+      }
+    } catch {
+      // bağlantı kopmuş, yenisini aç
+    }
+    browserInstance = null;
+  }
+
+  logger.debug?.('Puppeteer tarayıcı başlatılıyor…');
+  browserInstance = await puppeteer.launch({
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-extensions',
+      '--window-size=1920,1080',
+      '--lang=tr-TR,tr',
+    ],
+  });
+
+  browserLastUsed = Date.now();
+
+  // Boşta kalınca otomatik kapat
+  if (idleChecker) clearInterval(idleChecker);
+  idleChecker = setInterval(() => {
+    if (!browserInstance) {
+      clearInterval(idleChecker);
+      idleChecker = null;
+      return;
+    }
+    if (Date.now() - browserLastUsed > BROWSER_IDLE_TIMEOUT) {
+      logger.debug?.('Puppeteer tarayıcı boşta — kapatılıyor');
+      browserInstance.close().catch(() => {});
+      browserInstance = null;
+      clearInterval(idleChecker);
+      idleChecker = null;
+    }
+  }, 60_000);
+
+  // Beklenmedik kapanmada referansı temizle
+  browserInstance.on('disconnected', () => {
+    browserInstance = null;
+  });
+
+  logger.debug?.('Puppeteer tarayıcı hazır');
+  return browserInstance;
+}
+
+// ─── HTML parse ─────────────────────────────────────────────────────
 function extractPayload(html) {
   const match = html.match(/<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
   if (!match) throw new Error('__NUXT_DATA__ bloğu bulunamadı (sayfa yapısı değişmiş olabilir)');
   return JSON.parse(match[1]);
 }
 
-// Bir devalue indeksini çöz; sadece primitif değerler için (string/number/bool)
 function resolvePrimitive(data, idx) {
   if (typeof idx !== 'number' || idx < 0 || idx >= data.length) return undefined;
   const v = data[idx];
@@ -54,32 +120,69 @@ function parseDonations(html) {
     });
   }
 
-  // En yeni en üstte gelir; işleme sırası için eskiden yeniye çevir
   donations.sort((a, b) => new Date(a.date) - new Date(b.date));
   return donations;
 }
 
+// ─── Ana modül ──────────────────────────────────────────────────────
 export const bynoDonations = {
   /**
-   * Donate sayfasından bağış listesini çeker.
+   * Donate sayfasından bağış listesini çeker (Puppeteer ile).
    * @param {string} url donate.bynogame.com/donatelist/<uuid> adresi
    * @returns {Promise<Array<{id, nickName, message, amount, date, isDeleted, muted}>>}
    */
   async fetchDonations(url) {
-    const response = await axios.get(url, {
-      timeout: 20000,
-      headers: {
-        // Tam tarayıcı kimliği — "bot" içeren UA bazı WAF'larca (Cloudflare) engellenebilir
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
-        Accept: 'text/html',
-      },
-      // 5xx vb. durumlarda axios zaten throw eder
-    });
+    const browser = await getBrowser();
+    const page = await browser.newPage();
 
-    const donations = parseDonations(response.data);
-    logger.debug?.('ByNoGame bağış listesi çekildi', { count: donations.length });
-    return donations;
+    try {
+      // Gerçekçi tarayıcı profili
+      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+      });
+
+      // Gereksiz kaynakları engelle → daha hızlı yükleme
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        const type = req.resourceType();
+        if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
+      // Sayfaya git, Nuxt verisi yüklenene kadar bekle
+      await page.goto(url, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30_000,
+      });
+
+      // __NUXT_DATA__ script'inin DOM'a eklenmesini bekle
+      await page.waitForSelector('script#__NUXT_DATA__', { timeout: 15_000 });
+
+      const html = await page.content();
+      const donations = parseDonations(html);
+
+      logger.debug?.('ByNoGame bağış listesi çekildi (Puppeteer)', { count: donations.length });
+      return donations;
+    } finally {
+      // Sayfayı kapat, tarayıcıyı açık tut (cache)
+      await page.close().catch(() => {});
+    }
+  },
+
+  /** Tarayıcıyı manuel kapatmak için (graceful shutdown) */
+  async closeBrowser() {
+    if (browserInstance) {
+      await browserInstance.close().catch(() => {});
+      browserInstance = null;
+    }
+    if (idleChecker) {
+      clearInterval(idleChecker);
+      idleChecker = null;
+    }
   },
 
   // Test edilebilirlik için dışa açık
