@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { runStartupChecks } from '../utils/startupCheck.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -151,6 +152,10 @@ export class KnozyBot extends Client {
 
   async start() {
     try {
+      // VPS aktarımı / yeni kurulumda eksikleri otomatik tespit ve kur
+      const projectDir = path.join(__dirname, '..');
+      await runStartupChecks(projectDir);
+
       logger.info('Loading bot components...');
       await this.loadCommands();
       await this.loadPrefixCommands();
