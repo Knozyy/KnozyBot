@@ -69,7 +69,9 @@ export const bynoDonations = {
     const response = await axios.get(url, {
       timeout: 20000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) KnozyBot/1.0',
+        // Tam tarayıcı kimliği — "bot" içeren UA bazı WAF'larca (Cloudflare) engellenebilir
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
         Accept: 'text/html',
       },
       // 5xx vb. durumlarda axios zaten throw eder
