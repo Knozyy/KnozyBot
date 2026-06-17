@@ -117,11 +117,24 @@ function checkLinuxDeps() {
     return true;
   }
 
+  // 22.04 vs 24.04 uyumluluğu için libasound2 vs libasound2t64 tespiti yapalım
+  const finalDeps = [...LINUX_DEPS];
+  const alsaIndex = finalDeps.indexOf('libasound2');
+  if (alsaIndex !== -1) {
+    const hasT64 = runCmd('apt-cache show libasound2t64 2>/dev/null');
+    if (hasT64) {
+      finalDeps[alsaIndex] = 'libasound2t64';
+    }
+  }
+
   const missing = [];
-  for (const dep of LINUX_DEPS) {
+  for (const dep of finalDeps) {
     const status = runCmd(`dpkg -s ${dep} 2>/dev/null | grep "Status:"`);
     if (!status || !status.includes('install ok installed')) {
-      missing.push(dep);
+      // Sadece apt reposunda mevcut olan paketleri listeye ekle (hata almamak için)
+      if (runCmd(`apt-cache show ${dep} 2>/dev/null`)) {
+        missing.push(dep);
+      }
     }
   }
 

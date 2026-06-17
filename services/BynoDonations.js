@@ -48,8 +48,32 @@ function tryInstallLinuxDeps() {
       return false;
     }
 
+    // 22.04 vs 24.04 uyumluluğu için mevcut paketleri filtrele (örn: libasound2 vs libasound2t64)
+    const availableDeps = [];
+    for (const dep of LINUX_DEPS) {
+      try {
+        execSync(`apt-cache show ${dep}`, { stdio: 'ignore' });
+        availableDeps.push(dep);
+      } catch {
+        // Eğer libasound2 bulunamazsa libasound2t64 alternatifini dene
+        if (dep === 'libasound2') {
+          try {
+            execSync('apt-cache show libasound2t64', { stdio: 'ignore' });
+            availableDeps.push('libasound2t64');
+          } catch {}
+        }
+      }
+    }
+
+    if (availableDeps.length === 0) {
+      logger.error('❌ Kurulacak hiçbir bağımlılık paketi bulunamadı.');
+      return false;
+    }
+
     logger.info('🔧 Chromium için eksik sistem kütüphaneleri otomatik kuruluyor…');
-    execSync(`apt-get update -qq && apt-get install -y -qq ${LINUX_DEPS.join(' ')}`, {
+    logger.info(`📦 Kurulacak paketler: ${availableDeps.join(', ')}`);
+
+    execSync(`apt-get update -qq && apt-get install -y -qq ${availableDeps.join(' ')}`, {
       stdio: 'pipe',
       timeout: 120_000,
     });

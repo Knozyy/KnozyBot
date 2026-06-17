@@ -36,11 +36,22 @@ echo -e "${YELLOW}[4/5]${NC} Sistem bağımlılıkları kontrolü..."
 if [[ "$(uname)" == "Linux" ]] && command -v dpkg &> /dev/null; then
     DEPS=(libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0
           libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2
-          libasound2 libatspi2.0-0 libxshmfence1)
+          libatspi2.0-0 libxshmfence1)
+    
+    # libasound2 veya libasound2t64 kontrolü
+    ALSA_PKG="libasound2"
+    if apt-cache show libasound2t64 &>/dev/null; then
+        ALSA_PKG="libasound2t64"
+    fi
+    DEPS+=("$ALSA_PKG")
+
     MISSING=()
     for dep in "${DEPS[@]}"; do
         if ! dpkg -s "$dep" &>/dev/null; then
-            MISSING+=("$dep")
+            # Sadece apt reposunda gerçekten var olan paketleri kurmayı dene
+            if apt-cache show "$dep" &>/dev/null; then
+                MISSING+=("$dep")
+            fi
         fi
     done
     if [ ${#MISSING[@]} -eq 0 ]; then
