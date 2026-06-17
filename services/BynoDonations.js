@@ -227,18 +227,11 @@ export const bynoDonations = {
         'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
       });
 
-      // Gereksiz kaynakları engelle → daha hızlı yükleme
-      await page.setRequestInterception(true);
-      page.on('request', (req) => {
-        const type = req.resourceType();
-        if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
-          req.abort();
-        } else {
-          req.continue();
-        }
-      });
+      // NOT: Sayfa alt kaynaklarını (resim, stil vb.) engellemek Cloudflare/WAF sisteminin 
+      // tarayıcı davranış analizi tarafından bot olarak algılanmasına yol açabilir.
+      // Bu yüzden tüm kaynakların doğal bir tarayıcı gibi yüklenmesine izin veriyoruz.
 
-      // Sayfaya git, Nuxt verisi yüklenene kadar bekle
+      // Sayfaya git
       await page.goto(url, {
         waitUntil: 'domcontentloaded',
         timeout: 30_000,
@@ -252,6 +245,38 @@ export const bynoDonations = {
 
       logger.debug?.('ByNoGame bağış listesi çekildi (Puppeteer)', { count: donations.length });
       return donations;
+    } catch (err) {
+      // Hata anındaki sayfa durumunu analiz et
+      let pageTitle = 'Bilinmiyor';
+      let currentUrl = 'Bilinmiyor';
+      let pageContentSnippet = '';
+      try {
+        pageTitle = await page.title();
+        currentUrl = page.url();
+        const bodyText = await page.evaluate(() => document.body?.innerText || '');
+        pageContentSnippet = bodyText.slice(0, 300).replace(/\n/g, ' ');
+        
+        // Ekran görüntüsü al ve kaydet
+        const fs = await import('fs');
+        const path = await import('path');
+        const errorImgPath = path.join(process.cwd(), 'data', 'bynogame_error.png');
+        
+        if (!fs.existsSync(path.dirname(errorImgPath))) {
+          fs.mkdirSync(path.dirname(errorImgPath), { recursive: true });
+        }
+        await page.screenshot({ path: errorImgPath });
+        logger.warn(`📸 Hata anı ekran görüntüsü kaydedildi: ${errorImgPath}`);
+      } catch (e) {
+        logger.debug?.(`Hata detayı toplanamadı: ${e.message}`);
+      }
+
+      logger.warn(`❌ ByNoGame Sayfa Yükleme Hatası Detayları:`, {
+        url: currentUrl,
+        title: pageTitle,
+        snippet: pageContentSnippet,
+      });
+
+      throw err;
     } finally {
       // Sayfayı kapat, tarayıcıyı açık tut (cache)
       await page.close().catch(() => {});
