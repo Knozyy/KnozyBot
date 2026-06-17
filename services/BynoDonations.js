@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { execSync } from 'child_process';
 import { logger } from '../core/logger.js';
 
 puppeteer.use(StealthPlugin());
@@ -16,9 +17,50 @@ puppeteer.use(StealthPlugin());
  * Performans: Tarayıcı instance'ı cache'lenir — her 2dk'da yeni
  * Chrome açmak yerine aynı instance tekrar kullanılır. 10dk boşta
  * kalırsa otomatik kapanır, sonraki çağrıda yenisi açılır.
+ *
+ * Otomatik bağımlılık kurulumu: Chromium açılamazsa eksik Linux
+ * kütüphanelerini otomatik kurar ve tekrar dener.
  */
 
 const REQUIRED_KEYS = ['_id', 'nickName', 'message', 'amount', 'date'];
+
+// Chromium'un Linux'ta ihtiyaç duyduğu tüm sistem kütüphaneleri
+const LINUX_DEPS = [
+  'libnss3', 'libatk1.0-0', 'libatk-bridge2.0-0', 'libcups2',
+  'libdrm2', 'libxkbcommon0', 'libxcomposite1', 'libxdamage1',
+  'libxrandr2', 'libgbm1', 'libpango-1.0-0', 'libcairo2',
+  'libasound2', 'libatspi2.0-0', 'libxshmfence1',
+  'libx11-xcb1', 'libxcb-dri3-0', 'libxss1', 'libgtk-3-0',
+  'libgdk-pixbuf2.0-0', 'fonts-liberation', 'xdg-utils',
+];
+
+let depsInstalled = false; // bir kere kurulduysa tekrar deneme
+
+function tryInstallLinuxDeps() {
+  if (depsInstalled || process.platform !== 'linux') return false;
+  depsInstalled = true; // tekrar girmeyi önle
+
+  try {
+    const uid = process.getuid?.();
+    if (uid !== 0) {
+      logger.error('❌ Chromium sistem kütüphaneleri eksik ve root değilsiniz. Manuel kurun:');
+      logger.error(`   sudo apt-get install -y ${LINUX_DEPS.join(' ')}`);
+      return false;
+    }
+
+    logger.info('🔧 Chromium için eksik sistem kütüphaneleri otomatik kuruluyor…');
+    execSync(`apt-get update -qq && apt-get install -y -qq ${LINUX_DEPS.join(' ')}`, {
+      stdio: 'pipe',
+      timeout: 120_000,
+    });
+    logger.info('✅ Sistem kütüphaneleri kuruldu!');
+    return true;
+  } catch (err) {
+    logger.error(`❌ Otomatik kurulum başarısız: ${err.message}`);
+    logger.error(`   Manuel kurun: apt-get install -y ${LINUX_DEPS.join(' ')}`);
+    return false;
+  }
+}
 
 // ─── Tarayıcı instance yönetimi ─────────────────────────────────────
 let browserInstance = null;
@@ -26,37 +68,17 @@ let browserLastUsed = 0;
 const BROWSER_IDLE_TIMEOUT = 10 * 60 * 1000; // 10 dk boşta → kapat
 let idleChecker = null;
 
-async function getBrowser() {
-  // Mevcut instance hâlâ açıksa tekrar kullan
-  if (browserInstance) {
-    try {
-      if (browserInstance.isConnected()) {
-        browserLastUsed = Date.now();
-        return browserInstance;
-      }
-    } catch {
-      // bağlantı kopmuş, yenisini aç
-    }
-    browserInstance = null;
-  }
+const LAUNCH_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+  '--disable-extensions',
+  '--window-size=1920,1080',
+  '--lang=tr-TR,tr',
+];
 
-  logger.debug?.('Puppeteer tarayıcı başlatılıyor…');
-  browserInstance = await puppeteer.launch({
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--window-size=1920,1080',
-      '--lang=tr-TR,tr',
-    ],
-  });
-
-  browserLastUsed = Date.now();
-
-  // Boşta kalınca otomatik kapat
+function setupIdleChecker() {
   if (idleChecker) clearInterval(idleChecker);
   idleChecker = setInterval(() => {
     if (!browserInstance) {
@@ -72,13 +94,52 @@ async function getBrowser() {
       idleChecker = null;
     }
   }, 60_000);
+}
+
+async function getBrowser() {
+  // Mevcut instance hâlâ açıksa tekrar kullan
+  if (browserInstance) {
+    try {
+      if (browserInstance.isConnected()) {
+        browserLastUsed = Date.now();
+        return browserInstance;
+      }
+    } catch {
+      // bağlantı kopmuş
+    }
+    browserInstance = null;
+  }
+
+  // İlk deneme
+  logger.info('🌐 Puppeteer tarayıcı başlatılıyor…');
+  try {
+    browserInstance = await puppeteer.launch({ headless: 'new', args: LAUNCH_ARGS });
+  } catch (err) {
+    // Shared library hatası → otomatik kur ve tekrar dene
+    if (err.message.includes('shared libraries') || err.message.includes('cannot open') || err.message.includes('ENOENT')) {
+      logger.warn(`⚠️ Chromium başlatılamadı (eksik kütüphane): ${err.message.split('\n')[0]}`);
+
+      const installed = tryInstallLinuxDeps();
+      if (installed) {
+        logger.info('🔄 Kütüphaneler kuruldu, Chromium tekrar deneniyor…');
+        browserInstance = await puppeteer.launch({ headless: 'new', args: LAUNCH_ARGS });
+      } else {
+        throw err; // kuralamadıysak hata fırlat
+      }
+    } else {
+      throw err;
+    }
+  }
+
+  browserLastUsed = Date.now();
+  setupIdleChecker();
 
   // Beklenmedik kapanmada referansı temizle
   browserInstance.on('disconnected', () => {
     browserInstance = null;
   });
 
-  logger.debug?.('Puppeteer tarayıcı hazır');
+  logger.info('✅ Puppeteer tarayıcı hazır');
   return browserInstance;
 }
 
