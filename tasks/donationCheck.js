@@ -259,10 +259,8 @@ export default {
       consecutiveFailures = 0;
     } catch (error) {
       consecutiveFailures++;
-      // Gerçek sebebi (HTTP kodu / network hatası) tek satıra göm — Winston meta
-      // objesini terminale yansıtmadığından eskiden sadece "çekilemedi" görünüyordu.
       const status = error.response?.status;
-      const code = error.code; // ECONNREFUSED, ETIMEDOUT, ENOTFOUND vb.
+      const code = error.code;
       const detail = [status && `HTTP ${status}`, code, error.message].filter(Boolean).join(' · ');
       logger.warn(`ByNoGame bağış listesi çekilemedi (${consecutiveFailures}. hata): ${detail}`);
       if (consecutiveFailures >= FAIL_THRESHOLD) {
@@ -271,6 +269,14 @@ export default {
       }
       return;
     }
+
+    // ─── DEBUG: Tarama sonucunu logla ───────────────────────────────
+    logger.info(`📋 ByNoGame tarama tamamlandı — ${donations.length} bağış bulundu`);
+    for (const d of donations.slice(-10)) { // son 10 bağışı göster
+      const seen = donationStore.isSeen(d.id) ? '(zaten görüldü)' : '🆕 YENİ';
+      logger.info(`  💰 ${d.amount}₺ | ${d.nickName} | "${d.message || '—'}" ${seen}`);
+    }
+    // ────────────────────────────────────────────────────────────────
 
     // İlk çalıştırma: mevcut geçmişi baseline al, geriye dönük işlem yapma
     if (donationStore.ensureBaseline(donations.map((d) => d.id))) {
