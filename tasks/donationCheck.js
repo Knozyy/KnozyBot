@@ -271,10 +271,10 @@ export default {
     }
 
     // ─── DEBUG: Tarama sonucunu logla ───────────────────────────────
-    logger.info(`📋 ByNoGame tarama tamamlandı — ${donations.length} bağış bulundu`);
+    logger.debug?.(`📋 ByNoGame tarama tamamlandı — ${donations.length} bağış bulundu`);
     for (const d of donations.slice(-10)) { // son 10 bağışı göster
       const seen = donationStore.isSeen(d.id) ? '(zaten görüldü)' : '🆕 YENİ';
-      logger.info(`  💰 ${d.amount}₺ | ${d.nickName} | "${d.message || '—'}" ${seen}`);
+      logger.debug?.(`  💰 ${d.amount}₺ | ${d.nickName} | "${d.message || '—'}" ${seen}`);
     }
     // ────────────────────────────────────────────────────────────────
 
